@@ -23,6 +23,7 @@ from desisim.dla import dla_spec,insert_dlas
 from desisim.bal import BAL
 from desisim.io import empty_metatable
 from desisim.eboss import FootprintEBOSS, sdss_subsample, RedshiftDistributionEBOSS, sdss_subsample_redshift
+from desisim.fp_subsample import footprint_subsample, dataset_subsample, dataset_exptime
 from desispec.interpolation import resample_flux
 
 from desimodel.io import load_pixweight
@@ -136,6 +137,9 @@ Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?'
     parser.add_argument('--overwrite', action = "store_true" ,help="rerun if spectra exists (default is skip)")
 
     parser.add_argument('--nmax', type=int, default=None, help="Max number of QSO per input file, for debugging")
+    
+    parser.add_argument('--fp_subsample',type=str, default=None, help="Setup file to generate a subsample of DESI footprint with \
+        adequate exposure times probabilities. If exptime argument is given the exposure probabilities are ignored.")
 
     if options is None:
         args = parser.parse_args()
@@ -348,6 +352,26 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         transmission = transmission[selection]
         metadata = metadata[:][selection]
         DZ_FOG = DZ_FOG[selection]
+        
+    if args.fp_subsample:
+        if args.downsampling or args.desi_footprint:
+            raise ValueError("fp_subsample option can not be run with "
+                    +"desi_footprint, downsampling or exptime")
+        # figure out the density of all quasars
+        N_qsos = metadata['Z'].size
+        area_deg2 = healpy.pixelfunc.nside2pixarea(nside,degrees=True)
+        input_dens = N_qsos/area_deg2
+        selection = dataset_subsample(metadata["RA"], metadata["DEC"],input_dens,footprint_subsample(args.fp_subsample,nside),nside)
+        log.info("Select QSOs in DESI subsample footprint {} -> {}".format(transmission.shape[0],selection.size))
+        if selection.size == 0 :
+            log.warning("No intersection with DESI subsample footprint")
+            return
+        transmission = transmission[selection]
+        metadata = metadata[:][selection]
+        DZ_FOG = DZ_FOG[selection]
+        exptime = dataset_exptime(metadata["RA"],metadata["DEC"],footprint_subsample(args.fp_subsample,nside))
+        if not args.exptime: #ADDED FOR DEBUGGING, might leave it or not. 
+            obsconditions['EXPTIME']=exptime
 
     if args.desi_footprint :
         footprint_healpix = footprint.radec2pix(footprint_healpix_nside, metadata["RA"], metadata["DEC"])
@@ -359,8 +383,6 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         transmission = transmission[selection]
         metadata = metadata[:][selection]
         DZ_FOG = DZ_FOG[selection]
-
-
 
     nqso=transmission.shape[0]
     if args.downsampling is not None :
@@ -385,6 +407,9 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
             metadata = metadata[:][indices]
             DZ_FOG = DZ_FOG[indices]
             nqso = args.nmax
+            
+            if args.fp_subsample:
+                obsconditions['EXPTIME']=obsconditions['EXPTIME'][indices]                                      
 
     # In previous versions of the London mocks we needed to enforce F=1 for
     # z > z_qso here, but this is not needed anymore. Moreover, now we also
@@ -681,7 +706,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
        obsconditions['EXPTIME']*=exptime_fact
        log.info("Dust extinction added")
        log.info('exposure time adjusted to {}'.format(obsconditions['EXPTIME']))
-
+    
     sim_spectra(qso_wave,qso_flux, args.program, obsconditions=obsconditions,spectra_filename=ofilename,
                 sourcetype="qso", skyerr=args.skyerr,ra=metadata["RA"],dec=metadata["DEC"],targetid=targetid,
                 meta=specmeta,seed=seed,fibermap_columns=fibermap_columns,use_poisson=False) # use Poisson = False to get reproducible results.
@@ -710,6 +735,8 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     meta.add_column(Column(Z_input,name='Z_INPUT'))
     meta.add_column(Column(DZ_FOG,name='DZ_FOG'))
     meta.add_column(Column(DZ_sys_shift,name='DZ_SYS'))
+    if args.fp_subsample:
+        meta.add_column(Column(exptime,name='EXPTIME'))
     if args.gamma_kms_zfit:
         meta.add_column(Column(DZ_stat_shift,name='DZ_STAT'))
     if 'Z_noRSD' in metadata.dtype.names:
