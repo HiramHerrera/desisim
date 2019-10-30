@@ -7,7 +7,7 @@ import time
 import numpy as np
 from scipy.constants import speed_of_light
 from scipy.stats import cauchy
-from astropy.table import Table,Column
+from astropy.table import Table,Column,vstack
 import astropy.io.fits as pyfits
 import multiprocessing
 import healpy
@@ -31,13 +31,8 @@ from speclite import filters
 from desitarget.cuts import isQSO_colors
 from desiutil.dust import SFDMap, ext_odonnell
 
-try:
-    c = speed_of_light/1000. #- km/s
-except TypeError:
-    #
-    # This can happen in documentation builds.
-    #
-    c = 299792458.0/1000.0
+c = speed_of_light/1000. #- km/s
+
 
 def parse(options=None):
     parser=argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -110,7 +105,7 @@ def parse(options=None):
 
     #parser.add_argument('--metals-from-file', action = 'store_true', help = "add metals from HDU in file")
     parser.add_argument('--metals-from-file',type=str,const='all',help = "list of metals,'SI1260,SI1207' etc, to get from HDUs in file. \
-Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?')
+Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?') 
 
     parser.add_argument('--dla',type=str,required=False, help="Add DLA to simulated spectra either randonmly\
         (--dla random) or from transmision file (--dla file)")
@@ -136,6 +131,7 @@ Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?'
     parser.add_argument('--overwrite', action = "store_true" ,help="rerun if spectra exists (default is skip)")
 
     parser.add_argument('--nmax', type=int, default=None, help="Max number of QSO per input file, for debugging")
+    parser.add_argument('--extraqsos',type=triplet,help="Add extra quasars to the simulation",nargs='+')
 
     if options is None:
         args = parser.parse_args()
@@ -144,7 +140,13 @@ Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?'
 
     return args
 
-
+def triplet(s):
+    try:
+        number, inflim, suplim = map(float,s.split(','))
+        return number, inflim, suplim
+    except:
+        raise argparse.ArgumentTypeError("Argument should be nqsos,infMaglim,supMaglim")
+        
 def mod_cauchy(loc,scale,size,cut):
     samples=cauchy.rvs(loc=loc,scale=scale,size=3*size)
     samples=samples[abs(samples)<cut]
@@ -181,22 +183,21 @@ def is_south(dec):
 
 
 def get_healpix_info(ifilename):
-    """Read the header of the tranmission file to find the healpix pixel, nside
+    """
+    Read the header of the tranmission file to find the healpix pixel, nside
     and if we are lucky the scheme. If it fails, try to guess it from the
     filename (for backward compatibility).
-
-    Args:
+    Inputs:
         ifilename: full path to input transmission file
     Returns:
         healpix: HEALPix pixel corresponding to the file
         nside: HEALPix nside value
         hpxnest: Whether HEALPix scheme in the file was nested
     """
-
+    
     log = get_logger()
-
+    
     print('ifilename',ifilename)
-
     healpix=-1
     nside=-1
     hpxnest=True
@@ -348,7 +349,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         transmission = transmission[selection]
         metadata = metadata[:][selection]
         DZ_FOG = DZ_FOG[selection]
-
+                
     if args.desi_footprint :
         footprint_healpix = footprint.radec2pix(footprint_healpix_nside, metadata["RA"], metadata["DEC"])
         selection = np.where(footprint_healpix_weight[footprint_healpix]>0.99)[0]
@@ -359,10 +360,15 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         transmission = transmission[selection]
         metadata = metadata[:][selection]
         DZ_FOG = DZ_FOG[selection]
-
-
-
-    nqso=transmission.shape[0]
+        
+    if args.extraqsos:
+        # Store original data in pixel
+        transmission_pix = transmission.copy()
+        metadata_pix = metadata.copy()
+        DZ_FOG_pix = DZ_FOG.copy()
+        nqso_pix = transmission_pix.shape[0]
+            
+    nqso=transmission.shape[0] 
     if args.downsampling is not None :
         if args.downsampling <= 0 or  args.downsampling > 1 :
            log.error("Down sampling fraction={} must be between 0 and 1".format(args.downsampling))
@@ -377,6 +383,8 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         nqso = transmission.shape[0]
 
     if args.nmax is not None :
+        
+        
         if args.nmax < nqso :
             log.info("Limit number of QSOs from {} to nmax={} (random subsample)".format(nqso,args.nmax))
             # take a random subsample
@@ -391,7 +399,43 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     # have metal absorption that implies F < 1 for z > z_qso
     #for ii in range(len(metadata)):
     #    transmission[ii][trans_wave>lambda_RF_LYA*(metadata[ii]['Z']+1)]=1.0
-
+    
+    nqso_orig = nqso #Save original number of qsos
+    if args.extraqsos:
+        # Select the remaining data from the pixel at z>2.1
+        extra = np.in1d(metadata_pix['MOCKID'],metadata['MOCKID'],invert=True)
+        zmask=np.where(metadata_pix['Z'][extra]>2.1)
+        metadata_extra = metadata_pix[:][extra][zmask]
+        transmission_extra=transmission_pix[extra][zmask]
+        DZ_FOG_extra = DZ_FOG_pix[extra][zmask]
+        nqso_avail = transmission_extra.shape[0]
+        
+        extrainfo = list(zip(*args.extraqsos))
+        n_density_deg2 = np.array(extrainfo[0]).astype(int)
+        area_deg2 = healpy.pixelfunc.nside2pixarea(nside,degrees=True)
+        nqso_extra = (1+n_density_deg2*area_deg2).astype(int)
+        
+        if nqso_avail <=0:
+            log.info("Can't add new quasars, skipping")
+        else:   
+            if nqso_extra.sum()>nqso_avail:
+                log.info("Not enough extra QSOs in file, taking {avail} QSOs instead".format(avail=nqso_avail))
+                for i in range(len(nqso_extra)):
+                    if nqso_extra[i]>nqso_avail:
+                        nqso_extra[i] = nqso_avail
+                    nqso_avail -= nqso_extra[i]
+            log.info('Adding {n} extra QSOs'.format(n=nqso_extra.sum()))
+            #Select randomly the data
+            rnd_state = np.random.get_state()
+            sample = np.random.choice(np.arange(transmission_extra.shape[0]),size=nqso_extra.sum(),replace=False)
+            np.random.set_state(rnd_state)
+            #Refresh variables
+            transmission =np.append(transmission,transmission_extra[sample],axis=0)
+            metadata = np.append(metadata,metadata_extra[:][sample],axis=0)
+            DZ_FOG = np.append(DZ_FOG,DZ_FOG_extra[sample],axis=0) 
+            nqso = nqso + nqso_extra.sum()
+            log.info('New Total QSOS:{nqso}'.format(nqso=nqso))
+            
     # if requested, add DLA to the transmission skewers
     if args.dla is not None :
 
@@ -457,8 +501,8 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
             log.info("DLA metadata to be saved in {}".format(truth_filename))
         else:
             hdu_dla=pyfits.PrimaryHDU()
-            hdu_dla.name="DLA_META"
-
+            hdu_dla.name="DLA_META" 
+        
     # if requested, extend transmission skewers to cover full spectrum
     if args.target_selection or args.bbflux :
         wanted_min_wave = 3329. # needed to compute magnitudes for decam2014-r (one could have trimmed the transmission file ...)
@@ -488,8 +532,8 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     # whether to use QSO or SIMQSO to generate quasar continua.  Simulate
     # spectra in the north vs south separately because they're on different
     # photometric systems.
-    south = np.where( is_south(metadata['DEC']) )[0]
-    north = np.where( ~is_south(metadata['DEC']) )[0]
+    south = np.where( is_south(metadata['DEC'][:nqso_orig]))[0]
+    north = np.where(~is_south(metadata['DEC'][:nqso_orig]))[0]
     meta, qsometa = empty_metatable(nqso, objtype='QSO', simqso=not args.no_simqso)
     if args.no_simqso:
         log.info("Simulate {} QSOs with QSO templates".format(nqso))
@@ -499,7 +543,6 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         log.info("Simulate {} QSOs with SIMQSO templates".format(nqso))
         tmp_qso_flux = np.zeros([nqso, len(model.basewave)], dtype='f4')
         tmp_qso_wave = model.basewave
-
     for these, issouth in zip( (north, south), (False, True) ):
 
         # number of quasars in these
@@ -529,6 +572,35 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
 
         if args.no_simqso:
             tmp_qso_wave[these, :] = _tmp_qso_wave
+                        
+    if args.extraqsos:
+        rnd_state = np.random.get_state()
+        magnitudes = list(zip(extrainfo[1],extrainfo[2]))
+        nmin = nqso_orig
+        for n,mag in zip(nqso_extra,magnitudes):
+            if n<=0:continue   
+            log.info('Generate {n} extra QSOs in the {mag} magnitude range'.format(n=n,mag=mag))
+            south_extra = nmin+np.where(is_south(metadata['DEC'][nmin:n+nmin]))[0]
+            north_extra = nmin+np.where(~is_south(metadata['DEC'][nmin:n+nmin]))[0]
+            for these, issouth in zip((north_extra, south_extra), (False, True)):
+                nt = len(these)
+                if nt<=0: continue
+                _tmp_qso_flux, _tmp_qso_wave, _meta, _qsometa \
+                = model.make_templates(nmodel=nt,
+                                       redshift=metadata['Z'][these],magrange=mag,
+                                       lyaforest=False, nocolorcuts=True,
+                                       noresample=True, seed=seed, south=issouth)
+
+                _meta['TARGETID'] = metadata['MOCKID'][these]
+                _qsometa['TARGETID'] = metadata['MOCKID'][these]
+                meta[these] = _meta
+                qsometa[these] = _qsometa
+                tmp_qso_flux[these, :] = _tmp_qso_flux
+
+                if args.no_simqso:
+                    tmp_qso_wave[these, :] = _tmp_qso_wave
+            nmin+=n
+        np.random.set_state(rnd_state)
 
     log.info("Resample to transmission wavelength grid")
     qso_flux=np.zeros((tmp_qso_flux.shape[0],trans_wave.size))
@@ -548,11 +620,17 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
             log.info("Adding BALs with probability {}".format(args.balprob))
             # save current random state
             rnd_state = np.random.get_state()
-            tmp_qso_flux,meta_bal=bal.insert_bals(tmp_qso_wave,tmp_qso_flux, metadata['Z'],
+            tmp_qso_flux[:nqso_orig],meta_bal=bal.insert_bals(tmp_qso_wave,tmp_qso_flux[:nqso_orig], metadata['Z'][:nqso_orig],
                                                   balprob=args.balprob,seed=seed)
+            if args.extraqsos:
+                #Separate original bals from extra bals
+                tmp_qso_flux[nqso_orig:],meta_bal_ex=bal.insert_bals(tmp_qso_wave,tmp_qso_flux[nqso_orig:], metadata['Z'][nqso_orig:],
+                                                            balprob=args.balprob,seed=seed)
+                meta_bal=vstack([meta_bal,meta_bal_ex])
+                
+            np.random.set_state(rnd_state)  
             # restore random state to get the same random numbers later
             # as when we don't insert BALs
-            np.random.set_state(rnd_state)
             meta_bal['TARGETID'] = metadata['MOCKID']
             w = meta_bal['TEMPLATEID']!=-1
             meta_bal = meta_bal[:][w]
