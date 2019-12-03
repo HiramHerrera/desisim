@@ -52,14 +52,14 @@ class footprint_subsample:
         self.subsample_pix,self.subsample_dens,self.numobs_prob = self.read_footprint_subsample(fname,self.nside)
         print('got data from file')
     
-    def read_footprint_subsample(self,fname):
+    def read_footprint_subsample(self,fname,nside):
         print('Reading subsample footprint from file',fname)
         if not os.path.isfile(fname):
             print('DESI subsample file',fname)
             raise ValueError('file with DESI subsample footprint does not exist')
         data = np.loadtxt(fname)
         pix = data[:,0].astype(int)
-        dens = data[:,1:2]
+        dens = {'LOWZ':data[:,1],'HIGHZ':data[:,2]}
         numobs_prob = data[:,3:]
         return pix,dens,numobs_prob
     
@@ -67,7 +67,9 @@ class footprint_subsample:
         pixs = hp.ang2pix(self.nside, np.pi/2.-dec*np.pi/180.,ra*np.pi/180.,nest=True)
         thispix = np.unique(pixs)
         index = np.where(self.subsample_pix==thispix)[0]
-        dens = self.subsample_dens[index]
+        dens=dict()
+        dens['LOWZ']=self.subsample_dens['LOWZ'][index]
+        dens['HIGHZ']=self.subsample_dens['HIGHZ'][index]
         return dens
     
     def lyaqsos_obsprob(self,ra,dec):
@@ -77,28 +79,35 @@ class footprint_subsample:
         probs = self.numobs_prob[index]
         return probs
 
-def dataset_subsample(ra,dec,input_density,subsample_footprint,nside):
+def dataset_subsample(ra,dec,Z,subsample_footprint,nside):
     """ Downsample input list of angular positions based on DESI's year 5 footprint
         and input density of all quasars .
     Args:
         ra (ndarray): Right ascension (degrees)
         dec (ndarray): Declination (degrees)
-        input_density (float): Input density of all quasars per sq.deg.
+        Z (ndarray): Redshift
     Returns:
         selection (ndarray): mask to apply to downsample input list
     """
     # figure out expected DESI subsample footprint density, 
-    # in quasars / sq.deg.
     N=len(ra)
     density = subsample_footprint.lyaqsos_density(ra,dec)
     pixarea = hp.pixelfunc.nside2pixarea(nside, degrees=True)
-    N_desired = int(density*pixarea)
-    index=np.arange(N)
-    selection = np.random.choice(index,size=N_desired,replace=False)
-    print(len(selection),'selected out of',N)
-    return selection
+    selection=dict()
+    index={'LOWZ':np.where(Z<2.1)[0],'HIGHZ':np.where(Z>=2.1)[0]}
+    for whichz in ['LOWZ','HIGHZ']:
+        thisN=int(density[whichz]*pixarea)
+        
+        if len(index[whichz])<thisN:
+            thisN=len(index[whichz])
+            print(f'Not enough {whichz} quasars in metadata, taking {thisN} availables')
+            
+        whichIndeces=np.random.choice(index[whichz],size=thisN,replace=False)
+        selection[whichz]=whichIndeces
+        print(len(selection[whichz]),f'{whichz} quasars selected out of',len(index[whichz]))
+    return np.concatenate((selection['LOWZ'],selection['HIGHZ']))
 
-def dataset_exptime(ra,dec,subsample_footprint):
+def dataset_exptime(ra,dec,Z,subsample_footprint):
     """ Array of random observation times based on probabilities on file.
     Args:
         ra (ndarray): Right ascension (degrees)
@@ -110,5 +119,7 @@ def dataset_exptime(ra,dec,subsample_footprint):
     obs_prob = subsample_footprint.lyaqsos_obsprob(ra,dec)
     numobs = np.arange(1,len(obs_prob)+1)
     exptime = 1000*np.random.choice(numobs,size=N,p=obs_prob)
-    print(f'Generated {N} qsos with {numobs} exposures with probabilities {obs_prob}')
+    exptime[Z<2.1]=1000.
+    print(f'Generated {len(exptime[Z<2.1])} Low-z qsos with 1000 exposure time')
+    print(f'Generated {len(exptime[Z>=2.1])} High-z qsos with {numobs} exposures with probabilities {obs_prob}')
     return exptime

@@ -356,12 +356,8 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     if args.fp_subsample:
         if args.downsampling or args.desi_footprint:
             raise ValueError("fp_subsample option can not be run with "
-                    +"desi_footprint, downsampling or exptime")
-        # figure out the density of all quasars
-        N_qsos = metadata['Z'].size
-        area_deg2 = healpy.pixelfunc.nside2pixarea(nside,degrees=True)
-        input_dens = N_qsos/area_deg2
-        selection = dataset_subsample(metadata["RA"], metadata["DEC"],input_dens,footprint_subsample(args.fp_subsample,nside),nside)
+                    +"desi_footprint or downsampling")
+        selection = dataset_subsample(metadata["RA"], metadata["DEC"],metadata["Z"],footprint_subsample(args.fp_subsample,nside),nside)
         log.info("Select QSOs in DESI subsample footprint {} -> {}".format(transmission.shape[0],selection.size))
         if selection.size == 0 :
             log.warning("No intersection with DESI subsample footprint")
@@ -369,12 +365,13 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         transmission = transmission[selection]
         metadata = metadata[:][selection]
         DZ_FOG = DZ_FOG[selection]
-        exptime = dataset_exptime(metadata["RA"],metadata["DEC"],footprint_subsample(args.fp_subsample,nside))
+        
         if not args.exptime: #ADDED FOR DEBUGGING, might leave it or not. 
+            exptime = dataset_exptime(metadata["RA"],metadata["DEC"],metadata["Z"],footprint_subsample(args.fp_subsample,nside))
             obsconditions['EXPTIME']=exptime
 
     if args.desi_footprint :
-        footprint_healpix = footprint.radec2pix(footprint_healpix_nside, metadata["RA"], metadata["DEC"])
+        footprint_healpix = footprint.radec2pix(footprint_healpix_nside,metadata["RA"], metadata["DEC"])
         selection = np.where(footprint_healpix_weight[footprint_healpix]>0.99)[0]
         log.info("Select QSOs in DESI footprint {} -> {}".format(transmission.shape[0],selection.size))
         if selection.size == 0 :
@@ -736,6 +733,8 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     meta.add_column(Column(DZ_FOG,name='DZ_FOG'))
     meta.add_column(Column(DZ_sys_shift,name='DZ_SYS'))
     if args.fp_subsample:
+        if args.exptime:#Added for debugging and comparision
+            exptime=args.exptime*np.ones(len(metadata['Z']))
         meta.add_column(Column(exptime,name='EXPTIME'))
     if args.gamma_kms_zfit:
         meta.add_column(Column(DZ_stat_shift,name='DZ_STAT'))
