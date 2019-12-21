@@ -66,7 +66,7 @@ class footprint_subsample:
     def lyaqsos_density(self,ra,dec):
         pixs = hp.ang2pix(self.nside, np.pi/2.-dec*np.pi/180.,ra*np.pi/180.,nest=True)
         thispix = np.unique(pixs)
-        index = np.where(self.subsample_pix==thispix)[0]
+        index = np.where(self.subsample_pix==thispix) 
         dens=dict()
         dens['LOWZ']=self.subsample_dens['LOWZ'][index]
         dens['HIGHZ']=self.subsample_dens['HIGHZ'][index]
@@ -96,8 +96,9 @@ def dataset_subsample(ra,dec,Z,subsample_footprint,nside):
     selection=dict()
     index={'LOWZ':np.where(Z<2.1)[0],'HIGHZ':np.where(Z>=2.1)[0]}
     for whichz in ['LOWZ','HIGHZ']:
+        if len(density[whichz])==0: # Return empty array because there is no intersection with subsample footprint
+            return np.array([])
         thisN=int(density[whichz]*pixarea)
-        
         if len(index[whichz])<thisN:
             thisN=len(index[whichz])
             print(f'Not enough {whichz} quasars in metadata, taking {thisN} availables')
