@@ -1,0 +1,60 @@
+# quickquasars configfile
+# if you don't need a parameter or section you can comment it.
+# Program (DARK, GRAY or BRIGHT)"
+program: DARK
+# Max number of QSO per input file, for debugging
+nmax: False #1000
+# Fractional sky subtraction error
+skyerr: False #0.0
+# Does not use desisim.templates.SIMQSO to generate templates, and uses desisim.templates.QSO instead.
+no-simqso: False #True
+# Exposure time [sec]
+exptime: False #1000.
+# Global random seed (will be used to generate a seed per each file
+seed: 15430289 # null
+# Min and Max redshift
+redshift:
+    zmin: 1.8
+    #zmax: 10.
+    
+# Min and Max wavelength (obs. frame) and internal step.
+#wavelength:
+#    wmin: 3500.
+#    wmax: 10000. 
+#    dwave: 0.2
+
+zfit:
+    # add a zbest file per spectrum either with the truth redshift or adding some error 
+    # (optionally use it with sigma_kms_fog and/or gamma_kms_zfit).
+    zbest: True
+    #Adds a gaussian error to the quasar redshift that simulate the fingers of god effect.
+    sigma_kms_fog: False #150.
+    # Adds a Lorentzian distributed shift to the quasar redshift, to simulate the redshift fitting step.
+    # If a number is not specified, a value of 400 is used.
+    gamma_kms_zfit: False #0.
+    #Adds a shift to the quasar redshift written in the zbest file (in km/s).
+    shift-kms-los: False #0.
+    
+transmission:
+    # compute and write the QSO broad-band fluxes in the fibermap
+    bbflux: True
+    # Add LYB absorption from transmision file
+    add-LYB: True
+    # list of metals to get the transmission from, if 'all' runs on all metals
+    metals: False
+    # list of metals,'SI1260,SI1207' etc, to get from HDUs in file. 
+    # Use 'all' or no argument for mock version < 7.3 or final metal runs. 
+    metals-from-file: all
+    #Add DLA to simulated spectra either randonmly (dla random) or from transmision file (dla file)
+    dla: file
+    # To add BAL features with the specified probability (e.g balprob 0.5). Expect a number between 0 and 1. 
+    balprob: 0.16
+    # Do not multiply continuum by transmission, use F=1 everywhere.
+    no-transmission: False
+    
+# Setup file to generate a subsample of DESI footprint with adequate exposure times probabilities. 
+# If exptime argument is given the exposure probabilities are ignored.
+fpsubsample: /global/u1/h/hiramk/mycodes/density_files/desiyear5_strategyA.fits
+    
+    
+    
