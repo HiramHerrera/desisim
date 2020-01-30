@@ -20,30 +20,31 @@ def create_subsample_file(cat,outfile=None,nside=16,nest=True):
     pixarea = hp.pixelfunc.nside2pixarea(nside, degrees=True)
     unique_pixels = np.unique(pixels)
     
-    data = np.zeros((unique_pixels.size,3+maxnumobs))
+    # GENERATE TABLE AND TABLE META
+    colnames = ['HPXPIXEL','LOWZ_DENS','MIDZ_DENS','HIGHZ_DENS']
+    tbl = Table(names=colnames,dtype=('i8','f8','f8','f8'))
+    tbl.meta['name'] = 'DESI YEAR 5 QSOS FOOTPRINT'
+    tbl.meta['comments'] =['This table contains information about the QSO density for each pixel']
+    tbl.meta['NSIDE'] = nside
+    tbl.meta['NEST'] = nest
     
     # REDSHIFT MASKS
     lowz = cat['TRUEZ']<1.8
     midz = (cat['TRUEZ']>=1.8)&(cat['TRUEZ']<2.1)
     highz= cat['TRUEZ']>=2.1
+
     
     bins = np.arange(1,2+maxnumobs)
+    prob_numobs=np.zeros((unique_pixels.size,maxnumobs))
     for i,pix in enumerate(unique_pixels):
-        lowz_qsos = np.count_nonzero(pixels[lowz]==pix)
-        midz_qsos=np.count_nonzero(pixels[midz]==pix)
-        highz_qsos=np.count_nonzero(pixels[highz]==pix)
-        data[i,0]=lowz_qsos/pixarea
-        data[i,1]=midz_qsos/pixarea
-        data[i,2]=highz_qsos/pixarea
-        data[i,3:] = np.histogram(cat['NUMOBS'][highz][pixels[highz]==pix],density=True,bins=bins)[0]
+        lowz_dens = np.count_nonzero(pixels[lowz]==pix)/pixarea
+        midz_dens = np.count_nonzero(pixels[midz]==pix)/pixarea
+        highz_dens= np.count_nonzero(pixels[highz]==pix)/pixarea
         
-    # CREATE A TABLE FROM DATA
-    colnames = ['LOWZ_DENS','MIDZ_DENS','HIGHZ_DENS']+[f'PROB_NUMOBS_{i}' for i in range(1,maxnumobs+1)]
-    tbl = Table(data,names=colnames)
-    tbl.add_column(unique_pixels.astype(int),index=0,name='HPXPIXEL')
-    tbl.meta['name'] = 'DESI YEAR 5 HIGH Z QSOS FOOTPRINT'
-    tbl.meta['NSIDE'] = nside
-    tbl.meta['NEST'] = nest
+        prob_numobs[i]=np.histogram(cat['NUMOBS'][highz][pixels[highz]==pix],density=True,bins=bins)[0]
+        tbl.add_row((pix,lowz_dens,midz_dens,highz_dens))
+    tbl.add_column(Column(prob_numobs,name='PROB_NUMOBS'))  
+
     if outfile:
         tbl.write(outfile,overwrite=True)
         print(f'Saved {outfile} file')
