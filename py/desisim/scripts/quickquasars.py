@@ -61,6 +61,12 @@ def parse(options=None):
 
     parser.add_argument('--overwrite', action = "store_true" ,help="rerun if spectra exists (default is skip)")
 
+<<<<<<< HEAD
+=======
+    parser.add_argument('--nmax', type=int, default=None, help="Max number of QSO per input file, for debugging")
+
+
+>>>>>>> 7b9207638d289ad316642d77f9eeeb75a7fb8227
     if options is None:
         args = parser.parse_args()
     else:
@@ -689,9 +695,9 @@ def main(args=None):
     else:
         log.info("Load SIMQSO model")
         #lya_simqso_model.py is located in $DESISIM/py/desisim/scripts/.
-        #Uses a different emmision lines model than the default SIMQSO
+        #Uses a different emmision lines model than the default SIMQSO. 
+        #We will update this soon to match with the one used in select_mock_targets. 
         model=SIMQSO(nproc=1,sqmodel='lya_simqso_model')
-
     decam_and_wise_filters = None
     bassmzls_and_wise_filters = None
     if params['transmission'].get('bbflux') :
