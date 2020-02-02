@@ -133,6 +133,7 @@ Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?'
     parser.add_argument('--nmax', type=int, default=None, help="Max number of QSO per input file, for debugging")
     parser.add_argument('--extraqsos',type=triplet,help="Add extra quasars to the simulation",nargs='+')
 
+
     if options is None:
         args = parser.parse_args()
     else:
@@ -388,7 +389,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         if args.nmax < nqso :
             log.info("Limit number of QSOs from {} to nmax={} (random subsample)".format(nqso,args.nmax))
             # take a random subsample
-            indices = (np.random.uniform(size=args.nmax)*nqso).astype(int)
+            indices = np.random.choice(np.arange(nqso),args.nmax,replace=False)  ##Use random.choice instead of random.uniform (rarely but it does cause a duplication of qsos) 
             transmission = transmission[indices]
             metadata = metadata[:][indices]
             DZ_FOG = DZ_FOG[indices]
@@ -704,9 +705,10 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         meta         = meta[:][selection]
         qsometa      = qsometa[:][selection]
         DZ_FOG      = DZ_FOG[selection]
-
         for band in bands :
             bbflux[band] = bbflux[band][selection]
+        bbflux['SOUTH']=bbflux['SOUTH'][selection]  
+            
         nqso         = selection.size
 
     log.info("Resample to a linear wavelength grid (needed by DESI sim.)")
@@ -893,9 +895,9 @@ def main(args=None):
     else:
         log.info("Load SIMQSO model")
         #lya_simqso_model.py is located in $DESISIM/py/desisim/scripts/.
-        #Uses a different emmision lines model than the default SIMQSO
+        #Uses a different emmision lines model than the default SIMQSO. 
+        #We will update this soon to match with the one used in select_mock_targets. 
         model=SIMQSO(nproc=1,sqmodel='lya_simqso_model')
-
     decam_and_wise_filters = None
     bassmzls_and_wise_filters = None
     if args.target_selection or args.bbflux :
