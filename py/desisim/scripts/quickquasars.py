@@ -62,11 +62,16 @@ def parse(options=None):
     parser.add_argument('--overwrite', action = "store_true" ,help="rerun if spectra exists (default is skip)")
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
     parser.add_argument('--nmax', type=int, default=None, help="Max number of QSO per input file, for debugging")
 
 
 >>>>>>> 7b9207638d289ad316642d77f9eeeb75a7fb8227
+=======
+    parser.add_argument('--nmax', type=int, default=None, help="Max number of QSO per input file, for debugging")
+
+>>>>>>> 907d7673a9ab14cbc84164294d045203281f4b87
     if options is None:
         args = parser.parse_args()
     else:
