@@ -14,7 +14,7 @@ import healpy as hp
 from astropy.io import fits
 from astropy.table import Table, Column
 
-def create_subsample_file(cat,outfile=None,nside=16,nest=True):
+def create_density_file(cat,outfile=None,nside=16,nest=True):
     maxnumobs=max(cat['NUMOBS'])
     pixels = hp.ang2pix(nside, np.pi/2.-cat['DEC']*np.pi/180.,cat['RA']*np.pi/180.,nest=nest)
     pixarea = hp.pixelfunc.nside2pixarea(nside, degrees=True)
@@ -53,8 +53,10 @@ def create_subsample_file(cat,outfile=None,nside=16,nest=True):
         return tbl
     
 class footprint_subsample:
-    def __init__(self,fname,nside):
+    def __init__(self,fname,pixel,nside,hpxnest):
         self.nside = nside
+        self.pixel = pixel
+        self.hpxnest = hpxnest
         print('DESI subsample, nside',nside)
         self.subsample_pix,self.subsample_dens,self.numobs_prob = self.read_footprint_subsample(fname)
         print('got data from file')
@@ -63,41 +65,41 @@ class footprint_subsample:
         print('Reading subsample footprint from file',fname)
         if not os.path.isfile(fname):
             print('DESI subsample file',fname)
-            raise ValueError('file with DESI subsample footprint does not exist')
+            raise ValueError('density file with DESI subsample footprint does not exist')
         data = Table.read(fname)
+        
+        if self.nside != data.meta['NSIDE']:
+            raise ValueError('nside from density file does not match nside from transmission file')
+        if self.hpxnest != data.meta['NEST']:
+            raise ValueError('NEST option from density file does not match NEST from transmission file')
+            
         pix = data['HPXPIXEL']
         dens = data['LOWZ_DENS','MIDZ_DENS','HIGHZ_DENS']
         prob_numobs = data['PROB_NUMOBS']
         return pix,dens,prob_numobs
     
-    def lyaqsos_density(self,ra,dec):
-        pixs = hp.ang2pix(self.nside, np.pi/2.-dec*np.pi/180.,ra*np.pi/180.,nest=True)
-        thispix = np.unique(pixs)
-        index = np.where(self.subsample_pix==thispix)[0] 
-        dens=self.subsample_dens[index]
+    def lyaqsos_density(self):
+        thispix = self.pixel
+        dens = self.subsample_dens[self.subsample_pix==thispix]
         return dens
     
-    def lyaqsos_obsprob(self,ra,dec):
-        pixs = hp.ang2pix(self.nside, np.pi/2.-dec*np.pi/180.,ra*np.pi/180.,nest=True)
-        thispix = np.unique(pixs)
-        index = np.searchsorted(self.subsample_pix,thispix)[0]
-        probs = self.numobs_prob[index]
+    def lyaqsos_obsprob(self):
+        thispix = self.pixel
+        probs = self.numobs_prob[self.subsample_pix==thispix][0]
         return probs
 
-def dataset_subsample(ra,dec,Z,subsample_footprint):
+def dataset_subsample(Z,subsample_footprint):
     """ Downsample input list of angular positions based on DESI's year 5 footprint
         and input density of all quasars.
     Args:
-        ra (ndarray): Right ascension (degrees)
-        dec (ndarray): Declination (degrees)
         Z (ndarray): Redshift
     Returns:
         selection (ndarray): mask to apply to downsample input list
     """
     # figure out expected DESI subsample footprint density, 
-    N=len(ra)
+    N=len(Z)
     nside = subsample_footprint.nside
-    density = subsample_footprint.lyaqsos_density(ra,dec)
+    density = subsample_footprint.lyaqsos_density()
     
     if len(density)==0: # Return empty array because there is no intersection with subsample footprint
         return np.array([])
@@ -119,16 +121,15 @@ def dataset_subsample(ra,dec,Z,subsample_footprint):
         print(len(selection[whichz]),f'{whichz} quasars selected out of',len(index[whichz]))
     return np.concatenate((selection['LOWZ'],selection['MIDZ'],selection['HIGHZ']))
 
-def dataset_exptime(ra,dec,Z,subsample_footprint):
+def dataset_exptime(Z,subsample_footprint):
     """ Array of random observation times based on probabilities on file.
     Args:
-        ra (ndarray): Right ascension (degrees)
-        dec (ndarray): Declination (degrees)
+        Z (ndarray): Redshift
     Returns:
         exptime (ndarray): array of exposure time for each quasar.
     """
-    N=len(ra)
-    prob_numobs = subsample_footprint.lyaqsos_obsprob(ra,dec)
+    N=len(Z)
+    prob_numobs = subsample_footprint.lyaqsos_obsprob()
     numobs = np.arange(1,len(prob_numobs)+1)
     exptime = 1000*np.random.choice(numobs,size=N,p=prob_numobs)
     exptime[Z<2.1]=1000.
