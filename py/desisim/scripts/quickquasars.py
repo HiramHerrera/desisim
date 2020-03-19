@@ -85,8 +85,8 @@ def get_spectra_filename(args,nside,pixel):
     return os.path.join(args.outdir,filename)
 
 
-def get_zbest_filename(params,pixdir,nside,pixel):
-    if params.get('zbest') :
+def get_zbest_filename(zbest,pixdir,nside,pixel):
+    if zbest:
         return os.path.join(pixdir,"zbest-{}-{}.fits".format(nside,pixel))
     return None
 
@@ -237,7 +237,7 @@ def simulate_one_healpix(ifilename,args,params,model,obsconditions,decam_and_wis
     truth_filename = get_truth_filename(pixdir,nside,pixel)
 
     # get filename for zbest file
-    zbest_filename = get_zbest_filename(params,pixdir,nside,pixel)
+    zbest_filename = get_zbest_filename(zbest,pixdir,nside,pixel)
 
     if not overwrite :
         # check whether output exists or not
@@ -287,7 +287,7 @@ def simulate_one_healpix(ifilename,args,params,model,obsconditions,decam_and_wis
     fpsubsample = params.get('fpsubsample')
     exptimeparam = params.get('exptime')
     if fpsubsample:
-        selection = dataset_subsample(metadata["RA"], metadata["DEC"],metadata["Z"],footprint_subsample(fpsubsample,nside))
+        selection = dataset_subsample(metadata["Z"],footprint_subsample(fpsubsample,pixel,nside,hpxnest))
         log.info("Select QSOs in DESI subsample footprint {} -> {}".format(transmission.shape[0],selection.size))
         if selection.size == 0 :
             log.warning("No intersection with DESI subsample footprint")
@@ -297,7 +297,7 @@ def simulate_one_healpix(ifilename,args,params,model,obsconditions,decam_and_wis
         DZ_FOG = DZ_FOG[selection]
         
         if not exptimeparam: #ADDED FOR DEBUGGING, might leave it or not.
-            exptime = dataset_exptime(metadata["RA"],metadata["DEC"],metadata["Z"],footprint_subsample(fpsubsample,nside))
+            exptime = dataset_exptime(metadata["Z"],footprint_subsample(fpsubsample,pixel,nside,hpxnest))
             obsconditions['EXPTIME']=exptime
 
     nqso=transmission.shape[0]
@@ -598,7 +598,7 @@ def simulate_one_healpix(ifilename,args,params,model,obsconditions,decam_and_wis
     meta.add_column(Column(DZ_sys_shift,name='DZ_SYS'))
     if fpsubsample:
         if exptimeparam:#Added for debugging and comparision
-            exptime=exptime*np.ones(len(metadata['Z']))
+            exptime=exptimeparam*np.ones(len(metadata['Z']))
         meta.add_column(Column(exptime,name='EXPTIME'))
     if gamma_kms_zfit:
         meta.add_column(Column(DZ_stat_shift,name='DZ_STAT'))
