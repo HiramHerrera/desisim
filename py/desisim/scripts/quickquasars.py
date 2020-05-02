@@ -53,7 +53,7 @@ def parse(options=None):
 
     parser.add_argument('-o','--outfile', type=str, required=False, help="Output spectra (only used if single input file)")
     
-    parser.add_argument('-c', '--config', default='input.yaml')
+    parser.add_argument('-c', '--config', default='input.yaml', help='Configuration file')
 
     parser.add_argument('--outdir', type=str, default=".", required=False, help="Output directory")
 

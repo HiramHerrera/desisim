@@ -111,7 +111,7 @@ def dataset_subsample(Z,subsample_footprint):
         if len(index[whichz])==0:
             selection[whichz]= np.array([],dtype=int)
             continue
-        thisN=int(density[f'{whichz}_DENS']*pixarea)
+        thisN=np.round(density[f'{whichz}_DENS']*pixarea).astype(int)
         if len(index[whichz])<thisN:
             thisN=len(index[whichz])
             print(f'Not enough {whichz} quasars in metadata, taking {thisN} availables')
