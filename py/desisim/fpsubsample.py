@@ -80,19 +80,20 @@ class footprint_subsample:
         hpxnest (int): NEST for the sky.
     """
     def __init__(self,fname,pixel,nside,hpxnest):
+        self.fname = fname
         self.nside = nside
         self.pixel = pixel
         self.hpxnest = hpxnest
         print('DESI subsample, nside',nside)
-        self.subsample_pix,self.subsample_dens,self.numobs_prob = self.read_footprint_subsample(fname)
+        self.subsample_pix,self.subsample_dens,self.numobs_prob = self.read_footprint_subsample()
         print('got data from file')
     
-    def read_footprint_subsample(self,fname):
-        print('Reading subsample footprint from file',fname)
-        if not os.path.isfile(fname):
-            print('DESI subsample file',fname)
+    def read_footprint_subsample(self):
+        print('Reading subsample footprint from file',self.fname)
+        if not os.path.isfile(self.fname):
+            print('DESI subsample file',self.fname)
             raise ValueError('density file with DESI subsample footprint does not exist')
-        data = Table.read(fname)
+        data = Table.read(self.fname)
         
         if self.nside != data.meta['NSIDE']:
             raise ValueError('nside from density file does not match nside from transmission file')
