@@ -8,6 +8,7 @@ import datetime, time
 import numpy as np
 
 import astropy.table
+# See pixsim.py
 import astropy.time
 from astropy.io import fits
 import fitsio
@@ -20,6 +21,7 @@ import desispec.io.util
 import desimodel.io
 from desimodel.focalplane import fiber_area_arcsec2
 import desiutil.depend
+from desiutil.iers import freeze_iers
 import desispec.interpolation
 import desisim.io
 import desisim.specsim
@@ -130,6 +132,7 @@ def simflat(flatfile, nspec=5000, nonuniform=False, exptime=10, testslit=False,
     import specsim.simulator
     from desiutil.log import get_logger
     log = get_logger()
+    freeze_iers()
 
     log.info('Reading flat lamp spectrum from {}'.format(flatfile))
     sbflux, hdr = fits.getdata(flatfile, header=True)
@@ -242,6 +245,7 @@ def simscience(targets, fiberassign, obsconditions='DARK', expid=None,
     '''
     from desiutil.log import get_logger
     log = get_logger()
+    freeze_iers()
 
     flux, wave, meta = targets
 
@@ -392,6 +396,7 @@ def simulate_spectra(wave, flux, fibermap=None, obsconditions=None, redshift=Non
 
     from desiutil.log import get_logger
     log = get_logger('DEBUG')
+    freeze_iers()
 
     # Input cosmology to calculate the angular diameter distance of the galaxy's redshift
     from astropy.cosmology import FlatLambdaCDM
@@ -853,10 +858,10 @@ def read_mock_spectra(truthfile, targetids, mockdir=None):
 
         if 'OBJTYPE' in truth.dtype.names:
             # output of desisim.obs.new_exposure
-            objtype = [oo.decode('ascii').strip().upper() for oo in truth['OBJTYPE']] 
+            objtype = [oo.decode('ascii').strip().upper() for oo in truth['OBJTYPE']]
         else:
             # output of desitarget.mock.build.write_targets_truth
-            objtype = [oo.decode('ascii').strip().upper() for oo in truth['TEMPLATETYPE']] 
+            objtype = [oo.decode('ascii').strip().upper() for oo in truth['TEMPLATETYPE']]
         for obj in set(objtype):
             extname = 'TRUTH_{}'.format(obj)
             if extname in fx:
@@ -924,7 +929,8 @@ def targets2truthfiles(targets, basedir, nside=64, obscon=None):
         are in truthfiles[i]
     '''
     import healpy
-    import desitarget.mock.io as mockio
+    #import desitarget.mock.io as mockio
+    from desitarget.io import find_target_files
     assert nside >= 2
 
     #- TODO: what should be done with assignments without targets?
@@ -937,8 +943,8 @@ def targets2truthfiles(targets, basedir, nside=64, obscon=None):
     truthfiles = list()
     targetids = list()
     for ipix in sorted(np.unique(pixels)):
-        filename = mockio.findfile('truth', nside, ipix,
-                                   basedir=basedir, obscon=obscon)
+        filename = find_target_files(basedir, flavor='truth', obscon=obscon,
+                                     hp=ipix, nside=nside, mock=True)
         truthfiles.append(filename)
         ii = (pixels == ipix)
         targetids.append(np.asarray(targets['TARGETID'][ii]))

@@ -7,6 +7,7 @@ import warnings
 
 import numpy as np
 import astropy.table
+# See pixsim.py
 import astropy.time
 from astropy.io import fits
 import astropy.units as u
@@ -68,6 +69,9 @@ def main(args=None):
     import desiutil.log
     log = desiutil.log.get_logger()
 
+    from desiutil.iers import freeze_iers
+    freeze_iers()
+
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
@@ -97,6 +101,3 @@ def main(args=None):
     #- metadata truth and obs dictionary are None
     desisim.io.write_simspec(sim, None, fibermap, None, args.expid, args.night,
         filename=args.simspec, header=header, overwrite=args.clobber)
-
-
-

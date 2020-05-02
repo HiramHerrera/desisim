@@ -388,7 +388,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         if args.nmax < nqso :
             log.info("Limit number of QSOs from {} to nmax={} (random subsample)".format(nqso,args.nmax))
             # take a random subsample
-            indices = (np.random.uniform(size=args.nmax)*nqso).astype(int)
+            indices = np.random.choice(np.arange(nqso),args.nmax,replace=False)
             transmission = transmission[indices]
             metadata = metadata[:][indices]
             DZ_FOG = DZ_FOG[indices]
@@ -616,10 +616,12 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
 
     # if requested, add BAL features to the quasar continua
     if args.balprob:
-        if args.balprob<=1. and args.balprob >0:
+        if args.balprob <= 1. and args.balprob > 0:
+            from desisim.io import find_basis_template
             log.info("Adding BALs with probability {}".format(args.balprob))
             # save current random state
             rnd_state = np.random.get_state()
+<<<<<<< HEAD
             tmp_qso_flux[:nqso_orig],meta_bal=bal.insert_bals(tmp_qso_wave,tmp_qso_flux[:nqso_orig], metadata['Z'][:nqso_orig],
                                                   balprob=args.balprob,seed=seed)
             if args.extraqsos:
@@ -634,7 +636,18 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
             meta_bal['TARGETID'] = metadata['MOCKID']
             w = meta_bal['TEMPLATEID']!=-1
             meta_bal = meta_bal[:][w]
+=======
+            tmp_qso_flux,meta_bal = bal.insert_bals(tmp_qso_wave, tmp_qso_flux, metadata['Z'],
+                                                  balprob= args.balprob, seed=seed, qsoid=metadata['MOCKID'])
+            # restore random state to get the same random numbers later
+            # as when we don't insert BALs
+            np.random.set_state(rnd_state)
+            w = np.in1d(qsometa['TARGETID'], meta_bal['TARGETID'])
+            qsometa['BAL_TEMPLATEID'][w] = meta_bal['BAL_TEMPLATEID']
+>>>>>>> 3ae76e4c921f72b71ff7522462740e904136f428
             hdu_bal=pyfits.convenience.table_to_hdu(meta_bal); hdu_bal.name="BAL_META"
+            #Trim to only show the version, assuming it is located in os.environ['DESI_BASIS_TEMPLATES']
+            hdu_bal.header["BALTEMPL"]=find_basis_template(objtype='BAL').split('basis_templates/')[1]
             del meta_bal
         else:
             balstr=str(args.balprob)
@@ -704,9 +717,10 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         meta         = meta[:][selection]
         qsometa      = qsometa[:][selection]
         DZ_FOG      = DZ_FOG[selection]
-
         for band in bands :
             bbflux[band] = bbflux[band][selection]
+        bbflux['SOUTH']=bbflux['SOUTH'][selection]  
+            
         nqso         = selection.size
 
     log.info("Resample to a linear wavelength grid (needed by DESI sim.)")
@@ -802,11 +816,11 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     hdu = pyfits.convenience.table_to_hdu(meta)
     hdu.header['EXTNAME'] = 'TRUTH'
     hduqso=pyfits.convenience.table_to_hdu(qsometa)
-    hduqso.header['EXTNAME'] = 'QSO_META'
+    hduqso.header['EXTNAME'] = 'TRUTH_QSO'
     hdulist=pyfits.HDUList([pyfits.PrimaryHDU(header=hdr),hdu,hduqso])
-    if args.dla:
+    if args.dla :
         hdulist.append(hdu_dla)
-    if args.balprob:
+    if  args.balprob :
         hdulist.append(hdu_bal)
     hdulist.writeto(truth_filename, overwrite=True)
     hdulist.close()
@@ -893,9 +907,9 @@ def main(args=None):
     else:
         log.info("Load SIMQSO model")
         #lya_simqso_model.py is located in $DESISIM/py/desisim/scripts/.
-        #Uses a different emmision lines model than the default SIMQSO
+        #Uses a different emmision lines model than the default SIMQSO. 
+        #We will update this soon to match with the one used in select_mock_targets. 
         model=SIMQSO(nproc=1,sqmodel='lya_simqso_model')
-
     decam_and_wise_filters = None
     bassmzls_and_wise_filters = None
     if args.target_selection or args.bbflux :

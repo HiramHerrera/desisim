@@ -7,6 +7,7 @@ import warnings
 
 import numpy as np
 import astropy.table
+# See pixsim.py
 import astropy.time
 from astropy.io import fits
 import astropy.units as u
@@ -64,19 +65,22 @@ def parse(options=None):
 def main(args=None):
     '''
     TODO: document
-    
+
     Note: this bypasses specsim since we don't have an arclamp model in
     surface brightness units; we only have electrons on the CCD
     '''
     import desiutil.log
     log = desiutil.log.get_logger()
-    
+
+    from desiutil.iers import freeze_iers
+    freeze_iers()
+
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
-    
+
     log.info('reading arc data from {}'.format(args.arcfile))
     arcdata = astropy.table.Table.read(args.arcfile)
-    
+
     wave, phot, fibermap = \
         desisim.simexp.simarc(arcdata, nspec=args.nspec, nonuniform=args.nonuniform)
 
