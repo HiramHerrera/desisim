@@ -61,6 +61,11 @@ def parse(options=None):
 
     parser.add_argument('--overwrite', action = "store_true" ,help="rerun if spectra exists (default is skip)")
 
+<<<<<<< HEAD
+=======
+    parser.add_argument('--nmax', type=int, default=None, help="Max number of QSO per input file, for debugging")
+
+>>>>>>> 3ae76e4c921f72b71ff7522462740e904136f428
     if options is None:
         args = parser.parse_args()
     else:
@@ -306,7 +311,11 @@ def simulate_one_healpix(ifilename,args,params,model,obsconditions,decam_and_wis
         if nmax < nqso :
             log.info("Limit number of QSOs from {} to nmax={} (random subsample)".format(nqso,nmax))
             # take a random subsample
+<<<<<<< HEAD
             indices = np.random.choice(np.arange(nqso),nmax,replace=False)
+=======
+            indices = np.random.choice(np.arange(nqso),args.nmax,replace=False)
+>>>>>>> 3ae76e4c921f72b71ff7522462740e904136f428
             transmission = transmission[indices]
             metadata = metadata[:][indices]
             DZ_FOG = DZ_FOG[indices]
@@ -464,6 +473,7 @@ def simulate_one_healpix(ifilename,args,params,model,obsconditions,decam_and_wis
     tmp_qso_wave = trans_wave
 
     # if requested, add BAL features to the quasar continua
+<<<<<<< HEAD
     if balprob:
         if balprob<=1. and balprob >0:
             log.info("Adding BALs with probability {}".format(balprob))
@@ -471,13 +481,24 @@ def simulate_one_healpix(ifilename,args,params,model,obsconditions,decam_and_wis
             rnd_state = np.random.get_state()
             tmp_qso_flux,meta_bal=bal.insert_bals(tmp_qso_wave,tmp_qso_flux, metadata['Z'],
                                                   balprob=balprob,seed=seed)
+=======
+    if args.balprob:
+        if args.balprob <= 1. and args.balprob > 0:
+            from desisim.io import find_basis_template
+            log.info("Adding BALs with probability {}".format(args.balprob))
+            # save current random state
+            rnd_state = np.random.get_state()
+            tmp_qso_flux,meta_bal = bal.insert_bals(tmp_qso_wave, tmp_qso_flux, metadata['Z'],
+                                                  balprob= args.balprob, seed=seed, qsoid=metadata['MOCKID'])
+>>>>>>> 3ae76e4c921f72b71ff7522462740e904136f428
             # restore random state to get the same random numbers later
             # as when we don't insert BALs
             np.random.set_state(rnd_state)
-            meta_bal['TARGETID'] = metadata['MOCKID']
-            w = meta_bal['TEMPLATEID']!=-1
-            meta_bal = meta_bal[:][w]
+            w = np.in1d(qsometa['TARGETID'], meta_bal['TARGETID'])
+            qsometa['BAL_TEMPLATEID'][w] = meta_bal['BAL_TEMPLATEID']
             hdu_bal=pyfits.convenience.table_to_hdu(meta_bal); hdu_bal.name="BAL_META"
+            #Trim to only show the version, assuming it is located in os.environ['DESI_BASIS_TEMPLATES']
+            hdu_bal.header["BALTEMPL"]=find_basis_template(objtype='BAL').split('basis_templates/')[1]
             del meta_bal
         else:
             balstr=str(balprob)
@@ -614,11 +635,17 @@ def simulate_one_healpix(ifilename,args,params,model,obsconditions,decam_and_wis
     hdu = pyfits.convenience.table_to_hdu(meta)
     hdu.header['EXTNAME'] = 'TRUTH'
     hduqso=pyfits.convenience.table_to_hdu(qsometa)
-    hduqso.header['EXTNAME'] = 'QSO_META'
+    hduqso.header['EXTNAME'] = 'TRUTH_QSO'
     hdulist=pyfits.HDUList([pyfits.PrimaryHDU(header=hdr),hdu,hduqso])
+<<<<<<< HEAD
     if dla:
         hdulist.append(hdu_dla)
     if balprob:
+=======
+    if args.dla :
+        hdulist.append(hdu_dla)
+    if  args.balprob :
+>>>>>>> 3ae76e4c921f72b71ff7522462740e904136f428
         hdulist.append(hdu_bal)
     hdulist.writeto(truth_filename, overwrite=True)
     hdulist.close()
