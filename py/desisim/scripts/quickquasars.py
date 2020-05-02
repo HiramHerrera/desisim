@@ -367,8 +367,8 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     if args.fpsubsample is not None:
         if args.downsampling:
             raise ValueError("fpsubsample option can not be run with downsampling")
-            
-        selection = dataset_subsample(metadata["Z"],footprint_subsample(args.fpsubsample,pixel,nside,hpxnest))
+        fpsubsample = footprint_subsample(args.fpsubsample,pixel,nside,hpxnest)
+        selection = dataset_subsample(metadata["Z"],fpsubsample)
         log.info("Select QSOs in subsample footprint {} -> {}".format(transmission.shape[0],selection.size))
         if selection.size == 0 :
             log.warning("No intersection with subsample footprint")
@@ -378,7 +378,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         DZ_FOG = DZ_FOG[selection]
         
         if not args.exptime: #ADDED FOR DEBUGGING, might leave it or not.
-            exptime = dataset_exptime(metadata["Z"],footprint_subsample(args.fpsubsample,pixel,nside,hpxnest))
+            exptime = dataset_exptime(metadata["Z"],fpsubsample)
             obsconditions['EXPTIME']=exptime
 
 
