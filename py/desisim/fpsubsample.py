@@ -105,7 +105,7 @@ class footprint_subsample:
         prob_numobs = data['PROB_NUMOBS']
         return pix,dens,prob_numobs
     
-    def lyaqsos_density(self):
+    def density(self):
         thispix = self.pixel
         dens = self.subsample_dens[self.subsample_pix==thispix]
         return dens
@@ -126,27 +126,23 @@ def dataset_subsample(Z,subsample_footprint):
     # figure out expected DESI subsample footprint density, 
     N=len(Z)
     nside = subsample_footprint.nside
-    density = subsample_footprint.lyaqsos_density()
+    density = subsample_footprint.density()
     
-    if len(density)==0: # Return empty array because there is no intersection with subsample footprint
-        return np.array([])
-        
     pixarea = hp.pixelfunc.nside2pixarea(nside, degrees=True)
-    selection=dict()
+    selection=np.array([],dtype=int)
     index={'LOWZ':np.where(Z<1.8)[0],'MIDZ':np.where((Z>=1.8)&(Z<2.1))[0],'HIGHZ':np.where(Z>=2.1)[0]}
     for whichz in ['LOWZ','MIDZ','HIGHZ']:
-        if len(index[whichz])==0:
-            selection[whichz]= np.array([],dtype=int)
-            continue
         thisN=np.round(density[f'{whichz}_DENS']*pixarea).astype(int)
+        if len(index[whichz])==0 or thisN==0:
+            continue   
         if len(index[whichz])<thisN:
             thisN=len(index[whichz])
             print(f'Not enough {whichz} quasars in metadata, taking {thisN} availables')
             
-        whichIndeces=np.random.choice(index[whichz],size=thisN,replace=False)
-        selection[whichz]=whichIndeces
-        print(len(selection[whichz]),f'{whichz} quasars selected out of',len(index[whichz]))
-    return np.concatenate((selection['LOWZ'],selection['MIDZ'],selection['HIGHZ']))
+        whichIndices=np.random.choice(index[whichz],size=thisN,replace=False)
+        print(f'{len(whichIndices)} {whichz} quasars selected out of {len(index[whichz])}')
+        selection = np.concatenate((selection,whichIndices))
+    return selection
 
 def dataset_exptime(Z,subsample_footprint):
     """ Array of random observation times based on probabilities on density file.
@@ -157,11 +153,12 @@ def dataset_exptime(Z,subsample_footprint):
         exptime (ndarray): array of exposure time for each quasar.
     """
     N=len(Z)
-    prob_numobs = subsample_footprint.lyaqsos_obsprob()
-    numobs = np.arange(1,len(prob_numobs)+1)
-    exptime = 1000*np.random.choice(numobs,size=N,p=prob_numobs)
-    exptime[Z<2.1]=1000.
-    print(f'Generated {len(exptime[Z<1.8])} Low-z qsos with 1000 exposure time')
-    print(f'Generated {len(exptime[(Z>=1.8)&(Z<2.1)])} Mid-z qsos with 1000 exposure time')
-    print(f'Generated {len(exptime[Z>=2.1])} High-z qsos with {numobs} exposures with probabilities {prob_numobs}')
+    exptime = np.full(len(Z),1000)
+    if np.count_nonzero(Z>2.1)!=0:
+        prob_numobs = subsample_footprint.lyaqsos_obsprob()
+        numobs = np.arange(1,len(prob_numobs)+1)
+        N_highz= np.count_nonzero(Z>2.1)
+        print(f'Assigning {numobs} exposures with probabilities {prob_numobs} to {N_highz} High-z qsos')
+        exp_highz = 1000*np.random.choice(numobs,size=N_highz,p=prob_numobs)
+        exptime[Z>2.1]=exp_highz
     return exptime
