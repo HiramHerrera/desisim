@@ -131,17 +131,18 @@ def dataset_subsample(Z,subsample_footprint):
     pixarea = hp.pixelfunc.nside2pixarea(nside, degrees=True)
     selection=np.array([],dtype=int)
     index={'LOWZ':np.where(Z<1.8)[0],'MIDZ':np.where((Z>=1.8)&(Z<2.1))[0],'HIGHZ':np.where(Z>=2.1)[0]}
-    for whichz in ['LOWZ','MIDZ','HIGHZ']:
-        thisN=np.round(density[f'{whichz}_DENS']*pixarea).astype(int)
-        if len(index[whichz])==0 or thisN==0:
-            continue   
-        if len(index[whichz])<thisN:
-            thisN=len(index[whichz])
-            print(f'Not enough {whichz} quasars in metadata, taking {thisN} availables')
-            
-        whichIndices=np.random.choice(index[whichz],size=thisN,replace=False)
-        print(f'{len(whichIndices)} {whichz} quasars selected out of {len(index[whichz])}')
-        selection = np.concatenate((selection,whichIndices))
+    if len(density)!=0:
+        for whichz in ['LOWZ','MIDZ','HIGHZ']:
+            thisN=np.round(density[f'{whichz}_DENS']*pixarea).astype(int)
+            if len(index[whichz])==0 or thisN==0:
+                continue   
+            if len(index[whichz])<thisN:
+                thisN=len(index[whichz])
+                print(f'Not enough {whichz} quasars in metadata, taking {thisN} availables')
+
+            whichIndices=np.random.choice(index[whichz],size=thisN,replace=False)
+            print(f'{len(whichIndices)} {whichz} quasars selected out of {len(index[whichz])}')
+            selection = np.concatenate((selection,whichIndices))
     return selection
 
 def dataset_exptime(Z,subsample_footprint):
