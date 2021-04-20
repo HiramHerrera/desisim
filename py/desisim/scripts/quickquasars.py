@@ -146,6 +146,10 @@ Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?'
     parser.add_argument('--nmax', type=int, default=None, help="Max number of QSO per input file, for debugging")
 
     parser.add_argument('--save-resolution',action='store_true', help="Save full resolution in spectra file. By default only one matrix is saved in the truth file.")
+    
+    parser.add_argument('--zdist',default=None,type=str, help="Redshift distribution to be used in the generation of spectra.")
+    
+    parser.add_argument('--zdist-initial',default=None,type=str, help="Initial Redshift distribution to be resampled in the generation of spectra.")
 
     if options is None:
         args = parser.parse_args()
@@ -371,10 +375,46 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         transmission = transmission[selection]
         metadata = metadata[:][selection]
         DZ_FOG = DZ_FOG[selection]
+    
 
-
-
-    nqso=transmission.shape[0]
+    if args.zdist is not None:
+        if args.zdist_initial is None:
+            log.error("zdist argument should be run with zdist_initial")
+            raise ValueError("zdist argument should be run with zdist_initial")
+                      
+        pixarea=healpy.pixelfunc.nside2pixarea(nside,degrees=True)            
+                      
+        # Get old distribution
+        log.info("Reading initial redshift distribution from {}".format(args.zdist_initial))
+        zdist_old, dist_old = np.loadtxt(args.zdist_initial).T
+        normed_old = dist_old/sum(dist_old)
+                      
+        # Get new distribution
+        log.info("Reading new redshift distribution from {}".format(args.zdist))
+        zdist,dist = np.loadtxt(args.zdist).T
+        norm_dist=dist/sum(dist)
+        w=(zdist>=args.zmin)&(zdist<=args.zmax)
+        
+        nqso_dist = np.ceil(pixarea*sum(dist[w])).astype(int)       
+        z=metadata['Z']
+        
+        if nqso_dist>len(z):
+            nqso_dist=len(z)
+            
+        # Turn old distribution into new distribution with a Von Neumann Rejection Technique
+        pdf = np.interp(z,zdist,norm_dist,left=0,right=0)
+        pdf_old = np.interp(z,zdist_old,normed_old,left=0,right=0)
+        accepted = pdf_old/max(pdf_old)*np.random.uniform(size=len(z))<pdf/max(pdf)
+        indices = np.arange(len(z[accepted]))
+        if sum(accepted)>nqso_dist:
+            # Resample indices
+            indices = np.random.choice(indices,size=nqso_dist,replace=False)
+        log.info("Resampling distribution with acceptance fraction {} {}->{}".format(sum(accepted)/len(z),len(z),len(indices)))
+        transmission = transmission[accepted][indices]
+        metadata = metadata[:][accepted][indices]
+        DZ_FOG = DZ_FOG[accepted][indices]
+        
+    nqso=transmission.shape[0]        
     if args.downsampling is not None :
         if args.downsampling <= 0 or  args.downsampling > 1 :
            log.error("Down sampling fraction={} must be between 0 and 1".format(args.downsampling))
