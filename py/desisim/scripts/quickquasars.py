@@ -24,6 +24,7 @@ from desisim.dla import dla_spec,insert_dlas
 from desisim.bal import BAL
 from desisim.io import empty_metatable
 from desisim.eboss import FootprintEBOSS, sdss_subsample, RedshiftDistributionEBOSS, sdss_subsample_redshift
+from desisim.fpsubsample import footprint_subsample, dataset_subsample, dataset_exptime
 from desispec.interpolation import resample_flux
 
 from desimodel.io import load_pixweight
@@ -130,6 +131,9 @@ Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?'
     parser.add_argument('--save-continuum-dwave',type=float, default=2, help="Delta wavelength to save true continum")
 
     parser.add_argument('--desi-footprint', action = "store_true" ,help="select QSOs in DESI footprint")
+
+    parser.add_argument('--fpsubsample',type=str,default=None, help='Density file containing footprint, quasar density, \
+        and exposure time probability to generate spectra with multiple exposures.')
 
     parser.add_argument('--eboss',action = 'store_true', help='Setup footprint, number density, redshift distribution,\
         and exposure time to generate eBOSS-like mocks')
@@ -375,7 +379,6 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         metadata = metadata[:][selection]
         DZ_FOG = DZ_FOG[selection]
     
-
     if args.zdist is not None:                                 
         # Get new distribution
         log.info("Reading new redshift distribution from {}".format(args.zdist))
@@ -399,14 +402,31 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
                 # Drop QSOs if the number of disponible QSOs exceeds the wanted distribution
                 w_idx = np.random.uniform(size=nqso_orig)<downsampling_bin
                 idx = idx[w_idx]
-            selection+=list(idx)
-            
+            selection+=list(idx) 
         log.info("Resampling redshift distribution {}->{}".format(len(z),len(selection)))
         transmission = transmission[selection]
         metadata = metadata[:][selection]
         DZ_FOG = DZ_FOG[selection]
+
         
-    nqso=transmission.shape[0]        
+    if args.fpsubsample is not None:
+        if args.downsampling:
+            raise ValueError("fpsubsample option can not be run with downsampling")
+        fpsubsample = footprint_subsample(args.fpsubsample,pixel,nside,hpxnest)
+        selection = dataset_subsample(metadata["Z"],fpsubsample)
+        if selection.size == 0 :
+            log.warning("No intersection with subsample footprint")
+            return
+        log.info("Select QSOs in subsample footprint {} -> {}".format(transmission.shape[0],selection.size))
+        transmission = transmission[selection]
+        metadata = metadata[:][selection]
+        DZ_FOG = DZ_FOG[selection]       
+        if not args.exptime: #ADDED FOR DEBUGGING, might leave it or not.
+            exptime = dataset_exptime(metadata["Z"],fpsubsample)
+            obsconditions['EXPTIME']=exptime
+
+    nqso=transmission.shape[0]
+    
     if args.downsampling is not None :
         if args.downsampling <= 0 or  args.downsampling > 1 :
            log.error("Down sampling fraction={} must be between 0 and 1".format(args.downsampling))
@@ -429,6 +449,9 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
             metadata = metadata[:][indices]
             DZ_FOG = DZ_FOG[indices]
             nqso = args.nmax
+            
+            if args.fpsubsample is not None:
+                obsconditions['EXPTIME']=obsconditions['EXPTIME'][indices]
 
     # In previous versions of the London mocks we needed to enforce F=1 for
     # z > z_qso here, but this is not needed anymore. Moreover, now we also
@@ -800,6 +823,9 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         meta.add_column(Column(metadata['Z_noRSD'],name='Z_NORSD'))
     else:
         log.info('Z_noRSD field not present in transmission file. Z_NORSD not saved to truth file')
+    if args.fpsubsample is not None:
+        if args.exptime is None:
+            meta.add_column(Column(exptime,name='EXPTIME'))
 
     #Save global seed and pixel seed to primary header
     hdr=pyfits.Header()
