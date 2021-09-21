@@ -584,7 +584,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         else:
             _tmp_qso_flux, _tmp_qso_wave, _meta, _qsometa \
                 = model.make_templates(nmodel=nt,
-                    redshift=metadata['Z'][these],magrange=(16,23),
+                    redshift=metadata['Z'][these],magrange=(16.5,23),
                     lyaforest=False, nocolorcuts=True,
                     noresample=True, seed=seed, south=issouth)
 
