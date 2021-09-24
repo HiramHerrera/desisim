@@ -775,19 +775,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     else:
         specsim_config_file = 'desi'
 
-    ### use Poisson = False to get reproducible results.
-    ### use args.save_resolution = False to not save the matrix resolution per quasar in spectra files.
-    magnitudes = 22.5 - 2.5*np.log10(bbflux['FLUX_R'])
-    mags = [19.25,19.75,20.25,20.75,21.25,21.75,22.25,22.75]
-    factors = [ 1.0929339774895064,0.6027669736259839,0.972948470312217,0.8954091499781343,
-               1.3755136962969445,1.0049813290368899,0.7859098834874001,1.0143325593996046]
-    log.info("Sampling MAGS")
-    for i,m in enumerate(mags):
-        mag_min = m-0.25
-        mag_max = m+0.25
-        w_mag = (magnitudes>=mag_min)&(magnitudes<=mag_max)
-        qso_flux[w_mag]=factors[i]*qso_flux[w_mag]
-        
+    ### use Poisson = False to get reproducible results.        
     resolution=sim_spectra(qso_wave,qso_flux, args.program, obsconditions=obsconditions,spectra_filename=ofilename,
                            sourcetype="qso", skyerr=args.skyerr,ra=metadata["RA"],dec=metadata["DEC"],targetid=targetid,
                            meta=specmeta,seed=seed,fibermap_columns=fibermap_columns,use_poisson=False,
