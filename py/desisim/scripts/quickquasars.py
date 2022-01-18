@@ -458,6 +458,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     # Generate random magnitudes according to distribution to the selected targets            
     if args.rmagdist is not None:
         log.info("Reading R-band magnitude distribution from {}".format(args.rmagdist))
+        npz=np.load(args.rmagdist)
         zcenters = npz['ZBINS_CENTERS']
         dz = 0.5*(zcenters[1]-zcenters[0])
         
@@ -478,7 +479,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
                 n_todo=mags[w_z].size-mags_selected.size
                 mag_tmp = np.random.uniform(rmin,rmax,n_todo)
                 pdf = np.interp(mag_tmp,rmagcenters,distribution[i])
-                w_r = np.random.uniform(0,1,n_todo)<pdf/np.max(pdf)
+                w_r = np.random.uniform(0,1,n_todo)<pdf/np.max(distribution[i])
                 mags_selected=np.concatenate((mags_selected,mag_tmp[w_r]))
             mags[w_z] = np.array(mags_selected)
         assert not np.any(mags==0)
@@ -775,7 +776,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         targetid=None
 
     specmeta={"HPXNSIDE":nside,"HPXPIXEL":pixel, "HPXNEST":hpxnest}
-
+    
     if args.target_selection or args.bbflux :
         fibermap_columns = dict(
             FLUX_G = bbflux['FLUX_G'],
