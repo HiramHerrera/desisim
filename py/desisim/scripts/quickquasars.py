@@ -152,6 +152,8 @@ Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?'
     parser.add_argument('--save-resolution',action='store_true', help="Save full resolution in spectra file. By default only one matrix is saved in the truth file.")
     
     parser.add_argument('--zdist',default=None,type=str, help="Redshift distribution to be used in the generation of spectra.")
+    
+    parser.add_argument('--rmagdist',default=None,type=str, help="R band magnitude distribution by redshift bin and magnitude bin to be used in the generation of spectra.")
 
 
     if options is None:
@@ -408,7 +410,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         transmission = transmission[selection]
         metadata = metadata[:][selection]
         DZ_FOG = DZ_FOG[selection]
-
+        
         
     if args.fpsubsample is not None:
         if args.downsampling:
@@ -453,6 +455,35 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
             
             if args.fpsubsample is not None:
                 obsconditions['EXPTIME']=obsconditions['EXPTIME'][indices]
+                
+    # Generate random magnitudes according to distribution to the selected targets            
+    if args.rmagdist is not None:
+        log.info("Reading R-band magnitude distribution from {}".format(args.rmagdist))
+        npz=np.load(args.rmagdist)
+        zcenters = npz['ZBINS_CENTERS']
+        dz = 0.5*(zcenters[1]-zcenters[0])
+        
+        rmagcenters = npz['RMAGBINS_CENTERS']
+        drmag = 0.5*(rmagcenters[1]-rmagcenters[0])
+        rmin = np.min(rmagcenters-drmag)
+        rmax = np.max(rmagcenters+drmag)
+        
+        z = metadata['Z']
+        distribution = npz['DISTRIBUTION']
+        mags = np.zeros(len(z))
+        log.info("Generating random magnitudes according to distribution".format(args.rmagdist))
+        for i,z_bin in enumerate(zcenters):
+            w_z = (z>=z_bin-dz)&(z<=z_bin+dz)
+            if sum(w_z)==0: continue
+            mags_selected=np.array([])
+            while mags_selected.size!=mags[w_z].size:
+                n_todo=mags[w_z].size-mags_selected.size
+                mag_tmp = np.random.uniform(rmin,rmax,n_todo)
+                pdf = np.interp(mag_tmp,rmagcenters,distribution[i])
+                w_r = np.random.uniform(0,1,n_todo)<pdf/np.max(distribution[i])
+                mags_selected=np.concatenate((mags_selected,mag_tmp[w_r]))
+            mags[w_z] = np.array(mags_selected)
+        assert not np.any(mags==0)
 
     # In previous versions of the London mocks we needed to enforce F=1 for
     # z > z_qso here, but this is not needed anymore. Moreover, now we also
@@ -583,11 +614,18 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
                     lyaforest=False, nocolorcuts=True,
                     noresample=True, seed=seed, south=issouth)
         else:
-            _tmp_qso_flux, _tmp_qso_wave, _meta, _qsometa \
-                = model.make_templates(nmodel=nt,
-                    redshift=metadata['Z'][these],magrange=(16.5,23),
-                    lyaforest=False, nocolorcuts=True,
-                    noresample=True, seed=seed, south=issouth)
+            if args.rmagdist is not None:
+                _tmp_qso_flux, _tmp_qso_wave, _meta, _qsometa \
+                    = model.make_templates(nmodel=nt,
+                        redshift=metadata['Z'][these],mag=mags[these],
+                        lyaforest=False, nocolorcuts=True,
+                        noresample=True, seed=seed, south=issouth)
+            else:
+                _tmp_qso_flux, _tmp_qso_wave, _meta, _qsometa \
+                    = model.make_templates(nmodel=nt,
+                        redshift=metadata['Z'][these],magrange=(16.5,23.5),
+                        lyaforest=False, nocolorcuts=True,
+                        noresample=True, seed=seed, south=issouth)
 
         _meta['TARGETID'] = metadata['MOCKID'][these]
         _qsometa['TARGETID'] = metadata['MOCKID'][these]
@@ -739,7 +777,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         targetid=None
 
     specmeta={"HPXNSIDE":nside,"HPXPIXEL":pixel, "HPXNEST":hpxnest}
-
+    
     if args.target_selection or args.bbflux :
         fibermap_columns = dict(
             FLUX_G = bbflux['FLUX_G'],
