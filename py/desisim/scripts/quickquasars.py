@@ -415,7 +415,9 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     if args.fpsubsample is not None:
         if args.downsampling:
             raise ValueError("fpsubsample option can not be run with downsampling")
+        rnd_state = np.random.get_state()
         fpsubsample = footprint_subsample(args.fpsubsample,pixel,nside,hpxnest)
+        np.random.set_state(rnd_state)
         selection = dataset_subsample(metadata["Z"],fpsubsample)
         if selection.size == 0 :
             log.warning("No intersection with subsample footprint")
@@ -425,7 +427,9 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         metadata = metadata[:][selection]
         DZ_FOG = DZ_FOG[selection]       
         if not args.exptime: #ADDED FOR DEBUGGING, might leave it or not.
+            rnd_state = np.random.get_state()
             exptime = dataset_exptime(metadata["Z"],fpsubsample)
+            np.random.set_state(rnd_state)
             obsconditions['EXPTIME']=exptime
 
     nqso=transmission.shape[0]
@@ -472,6 +476,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         distribution = npz['DISTRIBUTION']
         mags = np.zeros(len(z))
         log.info("Generating random magnitudes according to distribution".format(args.rmagdist))
+        rnd_state = np.random.get_state()
         for i,z_bin in enumerate(zcenters):
             w_z = (z>=z_bin-dz)&(z<=z_bin+dz)
             if sum(w_z)==0: continue
@@ -483,6 +488,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
                 w_r = np.random.uniform(0,1,n_todo)<pdf/np.max(distribution[i])
                 mags_selected=np.concatenate((mags_selected,mag_tmp[w_r]))
             mags[w_z] = np.array(mags_selected)
+        np.random.set_state(rnd_state)
         assert not np.any(mags==0)
 
     # In previous versions of the London mocks we needed to enforce F=1 for
