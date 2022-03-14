@@ -18,7 +18,7 @@ def parse(options=None):
     #- Required
     parser.add_argument('--fiberassign', type=str, required=True,
                         help="input fiberassign directory or tile file")
-    parser.add_argument('--mockdir', type=str, required=True,
+    parser.add_argument('--mockdir', type=str, required=True,nargs="?",
                         help="directory with mock targets and truth")
     parser.add_argument('--obslist', type=str, required=True,
                         help="input surveysim obslist file")

@@ -64,8 +64,8 @@ forestModels = {
                 }
 
 BossDr9_fiducial_continuum = grids.BrokenPowerLawContinuumVar([
-                                    grids.GaussianSampler(-1.50,0.3),
-                                    grids.GaussianSampler(-0.50,0.3),
+                                    grids.GaussianSampler(-1.50,0.678),
+                                    grids.GaussianSampler(-0.50,0.678),
                                     grids.GaussianSampler(-0.37,0.3),
                                     grids.GaussianSampler(-1.70,0.3),
                                     grids.GaussianSampler(-1.03,0.3) ],
@@ -136,7 +136,9 @@ def EmLineTemplate_modified(*args,**kwargs):
                                   'LyAb':1.1,'LyAn':1.1
                                   #Add more lines if needed.
                                   })
-    kwargs['EmissionLineTrendFilename']=resource_filename('desisim', 'data/emlinetrends_Harris2016mod')
+    #kwargs['EmissionLineTrendFilename']=resource_filename('desisim', 'data/emlinetrends_Harris2016mod')
+    kwargs['EmissionLineTrendFilename']=resource_filename('desisim', 'data/newlines')
+    print('Using emission lines file: {}'.format(kwargs['EmissionLineTrendFilename']))
     return grids.generateBEffEmissionLines(*args,**kwargs)
 
 def model_vars(qsoGrid,wave,nSightLines=0,

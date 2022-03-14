@@ -107,5 +107,16 @@ def dataset_exptime(Z,subsample_footprint):
         N_highz= np.count_nonzero(Z>2.1)
         print(f'Assigning {numobs} exposures with probabilities {prob_numobs} to {N_highz} High-z qsos')
         exp_highz = 1000*np.random.choice(numobs,size=N_highz,p=prob_numobs)
+        
+        
+        # HARDCODED FOR MAIN SURVEY
+        w=exp_highz==1000
+        exptime_shift=np.random.choice([600.,  800., 1000., 1200., 1400., 1600., 1800.],size=sum(w),p=[0.04, 0.27, 0.29, 0.22, 0.11, 0.06, 0.01])
+        exp_highz[w]=exptime_shift
+        
+        w=exp_highz==2000
+        exptime_shift=np.random.choice([1400., 1600., 1800., 2000., 2200., 2400., 2600., 2800.],size=sum(w),p=[0.12, 0.07, 0.08, 0.30, 0.15, 0.14, 0.09, 0.05])
+        exp_highz[w]=exptime_shift
+        
         exptime[Z>2.1]=exp_highz
     return exptime
