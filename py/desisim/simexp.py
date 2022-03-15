@@ -955,22 +955,10 @@ def targets2truthfiles(targets, basedir, nside=64, obscon=None):
     truthfiles = list()
     targetids = list()
     for ipix in sorted(np.unique(pixels)):
-        if isinstance(basedir,str):
-            filename = find_target_files(basedir, flavor='truth', obscon=obscon,
-                                         hp=ipix, nside=nside, mock=True)
-            truthfiles.append(filename)
-            ii = (pixels == ipix)
-            targetids.append(np.asarray(targets['TARGETID'][ii]))
-        elif isinstance(basedir,list):
-            for base in basedir:
-                filename = find_target_files(base, flavor='truth', obscon=obscon,
-                                             hp=ipix, nside=nside, mock=True)
-                truthfiles.append(filename)
-                ii = (pixels == ipix)
-                tgs_these=fitsio.read(filename,columns=['TARGETID'])['TARGETID']
-                jj = np.isin(targets['TARGETID'][ii],tgs_these)
-                targetids.append(np.asarray(targets['TARGETID'][ii][jj]))
-        #Will be removed after debug
-        else:
-            print("FAILED")
+        filename = find_target_files(basedir, flavor='truth', obscon=obscon,
+                                     hp=ipix, nside=nside, mock=True)
+        truthfiles.append(filename)
+        ii = (pixels == ipix)
+        targetids.append(np.asarray(targets['TARGETID'][ii]))
+
     return truthfiles, targetids
