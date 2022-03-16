@@ -63,7 +63,8 @@ def parse(options=None):
 
     parser.add_argument('--airmass', type=float, default=None, help="Airmass")
 
-    parser.add_argument('--exptime', type=float, default=None, help="Exposure time [sec]")
+    parser.add_argument('--exptime', type=float, nargs='*',
+                        default=None, help="Exposure time [sec]")
 
     parser.add_argument('--moonfrac', type=float, default=None, help="Moon illumination fraction; 1=full")
 
@@ -151,9 +152,9 @@ Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?'
 
     parser.add_argument('--save-resolution',action='store_true', help="Save full resolution in spectra file. By default only one matrix is saved in the truth file.")
     
-    parser.add_argument('--zdist',default=None,type=str, help="Redshift distribution to be used in the generation of spectra.")
+    parser.add_argument('--zdist',default=None,type=str,nargs='*', help="Redshift distribution to be used in the generation of spectra.")
     
-    parser.add_argument('--rmagdist',default=None,type=str, help="R band magnitude distribution by redshift bin and magnitude bin to be used in the generation of spectra.")
+    parser.add_argument('--rmagdist',default=None,type=str,nargs='*', help="R band magnitude distribution by redshift bin and magnitude bin to be used in the generation of spectra.")
 
 
     if options is None:
@@ -382,35 +383,54 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         metadata = metadata[:][selection]
         DZ_FOG = DZ_FOG[selection]
     
-    if args.zdist is not None:                                 
-        # Get new distribution
-        log.info("Reading new redshift distribution from {}".format(args.zdist))
-        zdist,dist = np.loadtxt(args.zdist).T
-        dz = 0.5*(zdist[1]-zdist[0]) # Get bin size of the distribution
-        
+    if args.zdist is not None:
         z=metadata['Z']
-        pixarea=healpy.pixelfunc.nside2pixarea(nside,degrees=True) 
+        rnd_state = np.random.get_state()
+        exptime = np.zeros(len(z))
         # Turn old distribution into new distribution
+        selection_arr=[]#Initialize array to select qsos
+        tids=[]
+        pixarea=healpy.pixelfunc.nside2pixarea(nside,degrees=True)
+        for i,zdist_file in enumerate(args.zdist):
+            selection_tmp=[]
+            log.info("Reading new redshift distribution from {}".format(zdist_file))
+            zdist,dist = np.loadtxt(zdist_file).T
+            dz = 0.5*(zdist[1]-zdist[0]) # Get bin size of the distribution
+            for z_bin, dist_bin in zip(zdist,dist):
+                nqso_bin=np.ceil(pixarea*dist_bin).astype(int)
+                w_z = (z>=z_bin-dz)&(z<=z_bin+dz)
+                idx = np.where(w_z)[0]
+                if len(z[w_z])==0: continue
+                #For first 
+                if len(selection_arr)==0:
+                    w_i = np.isin(idx,selection_arr,invert=True)
+                else:
+                    w_i = np.isin(idx,np.concatenate(selection_arr),invert=True)
+                idx = idx[w_i]
+                nqso_orig = len(z[w_z][w_i])
+                if nqso_orig==0:
+                    continue # If no QSOs in that bin, skip
+                downsampling_bin = nqso_bin/nqso_orig
+                if downsampling_bin<1:
+                    # Drop QSOs if the number of disponible QSOs exceeds the wanted distribution
+                    w_idx = np.random.uniform(size=nqso_orig)<downsampling_bin
+                    idx = idx[w_idx]
+                selection_tmp+=list(idx)
+            exptime[selection_tmp]=args.exptime[i]
+            selection_arr.append(selection_tmp)
+            tids.append(metadata[:][selection_tmp]['MOCKID'])
+        selection=np.concatenate(selection_arr)
+        assert len(selection)==len(np.unique(selection))
+        assert len(np.concatenate(tids))==len(np.unique(np.concatenate(tids)))
+        np.random.set_state(rnd_state)
         
-        selection=[] #Initialize array to select qsos
-        for z_bin, dist_bin in zip(zdist,dist):
-            nqso_bin=np.ceil(pixarea*dist_bin).astype(int)
-            w_z = (z>=z_bin-dz)&(z<=z_bin+dz)
-            nqso_orig = len(z[w_z])
-            if nqso_orig==0:
-                continue # If no QSOs in that bin, skip
-            idx = np.where(w_z)[0]
-            downsampling_bin = nqso_bin/nqso_orig
-            if downsampling_bin<1:
-                # Drop QSOs if the number of disponible QSOs exceeds the wanted distribution
-                w_idx = np.random.uniform(size=nqso_orig)<downsampling_bin
-                idx = idx[w_idx]
-            selection+=list(idx) 
         log.info("Resampling redshift distribution {}->{}".format(len(z),len(selection)))
+        exptime=exptime[selection]
+        obsconditions['EXPTIME']=exptime
         transmission = transmission[selection]
         metadata = metadata[:][selection]
         DZ_FOG = DZ_FOG[selection]
-        
+
         
     if args.fpsubsample is not None:
         if args.downsampling:
@@ -462,35 +482,38 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
                 
     # Generate random magnitudes according to distribution to the selected targets            
     if args.rmagdist is not None:
-        log.info("Reading R-band magnitude distribution from {}".format(args.rmagdist))
-        npz=np.load(args.rmagdist)
-        zcenters = npz['ZBINS_CENTERS']
-        dz = 0.5*(zcenters[1]-zcenters[0])
-        
-        rmagcenters = npz['RMAGBINS_CENTERS']
-        drmag = 0.5*(rmagcenters[1]-rmagcenters[0])
-        rmin = np.min(rmagcenters-drmag)
-        rmax = np.max(rmagcenters+drmag)
-        
-        z = metadata['Z']
-        distribution = npz['DISTRIBUTION']
-        mags = np.zeros(len(z))
-        log.info("Generating random magnitudes according to distribution".format(args.rmagdist))
+        z_all = metadata['Z']
+        mags = np.zeros(len(z_all))
         rnd_state = np.random.get_state()
-        for i,z_bin in enumerate(zcenters):
-            w_z = (z>=z_bin-dz)&(z<=z_bin+dz)
-            if sum(w_z)==0: continue
-            mags_selected=np.array([])
-            while mags_selected.size!=mags[w_z].size:
-                n_todo=mags[w_z].size-mags_selected.size
-                mag_tmp = np.random.uniform(rmin,rmax,n_todo)
-                pdf = np.interp(mag_tmp,rmagcenters,distribution[i])
-                w_r = np.random.uniform(0,1,n_todo)<pdf/np.max(distribution[i])
-                mags_selected=np.concatenate((mags_selected,mag_tmp[w_r]))
-            mags[w_z] = np.array(mags_selected)
+        for j,rmagdist_file in enumerate(args.rmagdist):
+            log.info("Reading R-band magnitude distribution from {}".format(rmagdist_file))
+            npz=np.load(rmagdist_file)
+            zcenters = npz['ZBINS_CENTERS']
+            dz = 0.5*(zcenters[1]-zcenters[0])
+
+            rmagcenters = npz['RMAGBINS_CENTERS']
+            drmag = 0.5*(rmagcenters[1]-rmagcenters[0])
+            rmin = np.min(rmagcenters-drmag)
+            rmax = np.max(rmagcenters+drmag)
+            distribution = npz['DISTRIBUTION']
+            log.info("Generating random magnitudes according to distribution".format(args.rmagdist))
+            w_m = np.isin(metadata[:]['MOCKID'],tids[j])
+            z=z_all[w_m]
+            mags_tmp=np.zeros(len(z))
+            for i,z_bin in enumerate(zcenters):
+                w_z = (z>=z_bin-dz)&(z<=z_bin+dz)
+                if sum(w_z)==0: continue
+                mags_selected=np.array([])
+                while mags_selected.size!=mags_tmp[w_z].size:
+                    n_todo=mags_tmp[w_z].size-mags_selected.size
+                    mag_tmp = np.random.uniform(rmin,rmax,n_todo)
+                    pdf = np.interp(mag_tmp,rmagcenters,distribution[i])
+                    w_r = np.random.uniform(0,1,n_todo)<pdf/np.max(distribution[i])
+                    mags_selected=np.concatenate((mags_selected,mag_tmp[w_r]))
+                mags_tmp[w_z] = np.array(mags_selected)
+            mags[w_m]=mags_tmp
         np.random.set_state(rnd_state)
         assert not np.any(mags==0)
-
     # In previous versions of the London mocks we needed to enforce F=1 for
     # z > z_qso here, but this is not needed anymore. Moreover, now we also
     # have metal absorption that implies F < 1 for z > z_qso
@@ -850,15 +873,14 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     meta.add_column(Column(Z_input,name='Z_INPUT'))
     meta.add_column(Column(DZ_FOG,name='DZ_FOG'))
     meta.add_column(Column(DZ_sys_shift,name='DZ_SYS'))
+    meta.add_column(Column(exptime,name='EXPTIME'))
     if args.gamma_kms_zfit:
         meta.add_column(Column(DZ_stat_shift,name='DZ_STAT'))
     if 'Z_noRSD' in metadata.dtype.names:
         meta.add_column(Column(metadata['Z_noRSD'],name='Z_NORSD'))
     else:
         log.info('Z_noRSD field not present in transmission file. Z_NORSD not saved to truth file')
-    if args.fpsubsample is not None:
-        if args.exptime is None:
-            meta.add_column(Column(exptime,name='EXPTIME'))
+
 
     #Save global seed and pixel seed to primary header
     hdr=pyfits.Header()
