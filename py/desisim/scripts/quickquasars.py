@@ -391,6 +391,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         selection_arr=[]#Initialize array to select qsos
         tids=[]
         pixarea=healpy.pixelfunc.nside2pixarea(nside,degrees=True)
+        print(args.zdist)
         for i,zdist_file in enumerate(args.zdist):
             selection_tmp=[]
             log.info("Reading new redshift distribution from {}".format(zdist_file))
@@ -398,7 +399,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
             dz = 0.5*(zdist[1]-zdist[0]) # Get bin size of the distribution
             for z_bin, dist_bin in zip(zdist,dist):
                 nqso_bin=np.ceil(pixarea*dist_bin).astype(int)
-                w_z = (z>=z_bin-dz)&(z<=z_bin+dz)
+                w_z = (z>z_bin-dz)&(z<=z_bin+dz)
                 idx = np.where(w_z)[0]
                 if len(z[w_z])==0: continue
                 #For first 
@@ -419,12 +420,14 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
             exptime[selection_tmp]=args.exptime[i]
             selection_arr.append(selection_tmp)
             tids.append(metadata[:][selection_tmp]['MOCKID'])
-        selection=np.concatenate(selection_arr)
+            np.random.set_state(rnd_state)
+        selection=np.concatenate(selection_arr).astype(int)
         assert len(selection)==len(np.unique(selection))
         assert len(np.concatenate(tids))==len(np.unique(np.concatenate(tids)))
-        np.random.set_state(rnd_state)
+        
         
         log.info("Resampling redshift distribution {}->{}".format(len(z),len(selection)))
+        if len(selection)==0: return
         exptime=exptime[selection]
         obsconditions['EXPTIME']=exptime
         transmission = transmission[selection]
@@ -512,7 +515,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
                     mags_selected=np.concatenate((mags_selected,mag_tmp[w_r]))
                 mags_tmp[w_z] = np.array(mags_selected)
             mags[w_m]=mags_tmp
-        np.random.set_state(rnd_state)
+            np.random.set_state(rnd_state)
         assert not np.any(mags==0)
     # In previous versions of the London mocks we needed to enforce F=1 for
     # z > z_qso here, but this is not needed anymore. Moreover, now we also
