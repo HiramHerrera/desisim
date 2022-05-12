@@ -136,8 +136,8 @@ def EmLineTemplate_modified(*args,**kwargs):
                                   'LyAb':1.1,'LyAn':1.1
                                   #Add more lines if needed.
                                   })
-    #kwargs['EmissionLineTrendFilename']=resource_filename('desisim', 'data/emlinetrends_Harris2016mod')
-    kwargs['EmissionLineTrendFilename']=resource_filename('desisim', 'data/newlines')
+    kwargs['EmissionLineTrendFilename']=resource_filename('desisim', 'data/emlinetrends_Harris2016mod')
+    #kwargs['EmissionLineTrendFilename']=resource_filename('desisim', 'data/newlines')
     print('Using emission lines file: {}'.format(kwargs['EmissionLineTrendFilename']))
     return grids.generateBEffEmissionLines(*args,**kwargs)
 
