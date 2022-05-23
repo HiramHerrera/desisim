@@ -76,7 +76,7 @@ def parse(options=None):
 
     parser.add_argument('--skyerr', type=float, default=0.0, help="Fractional sky subtraction error")
 
-    parser.add_argument('--downsampling', type=float, default=None,help="fractional random down-sampling (value between 0 and 1)")
+    parser.add_argument('--downsampling', type=float, nargs='*', default=None,help="fractional random down-sampling (value between 0 and 1)")
 
     parser.add_argument('--zmin', type=float, default=0, help="Min redshift")
 
@@ -155,6 +155,7 @@ Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?'
     parser.add_argument('--zdist',default=None,type=str,nargs='*', help="Redshift distribution to be used in the generation of spectra.")
     
     parser.add_argument('--rmagdist',default=None,type=str,nargs='*', help="R band magnitude distribution by redshift bin and magnitude bin to be used in the generation of spectra.")
+    parser.add_argument('--magranges',default=[16.5,23.5],type=str,nargs='*', help="R band magnitude intervals to be used in the generation of spectra.")
 
 
     if options is None:
@@ -458,13 +459,36 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     nqso=transmission.shape[0]
     
     if args.downsampling is not None :
-        if args.downsampling <= 0 or  args.downsampling > 1 :
-           log.error("Down sampling fraction={} must be between 0 and 1".format(args.downsampling))
-           raise ValueError("Down sampling fraction={} must be between 0 and 1".format(args.downsampling))
-        indices = np.where(np.random.uniform(size=nqso)<args.downsampling)[0]
-        if indices.size == 0 :
-            log.warning("Down sampling from {} to 0 (by chance I presume)".format(nqso))
-            return
+        indices=[]
+        survey_all=np.zeros(nqso).astype(str)
+        all_indices=np.arange(nqso)
+        exptime = np.zeros(nqso)
+        rnd_state = np.random.get_state()
+        for i,downsampling in enumerate(args.downsampling):
+            #if downsampling <= 0 or  downsampling > 1 :
+                #log.error("Down sampling fraction={} must be between 0 and 1".format(args.downsampling))
+                #raise ValueError("Down sampling fraction={} must be between 0 and 1".format(args.downsampling))
+            w=np.isin(all_indices,indices,invert=True)
+            avail=all_indices[w]
+            if i>0:
+                downsampling=downsampling*nqso/len(avail)
+            
+            if len(avail)==0:
+                log.warning(f"Not enough qsos available for survey {i}")
+                continue 
+            selection_tmp = np.random.uniform(size=len(avail))<downsampling
+            log.info(f"Selecting {sum(selection_tmp)} QSOs for SURVEY {i+1}, downsampling: {args.downsampling[i]}")
+            indices_tmp = avail[selection_tmp]
+            if indices_tmp.size == 0 :
+                log.warning("Down sampling from {} to 0 (by chance I presume)".format(nqso))
+                return
+            survey_all[indices_tmp]=f'SURVEY {i+1}'
+            exptime[indices_tmp]=args.exptime[i]
+            indices.extend(indices_tmp)
+        np.random.set_state(rnd_state)
+        exptime=exptime[indices]
+        obsconditions['EXPTIME']=exptime
+        survey=survey_all[indices]
         transmission = transmission[indices]
         metadata = metadata[:][indices]
         DZ_FOG = DZ_FOG[indices]
@@ -646,6 +670,11 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
                     lyaforest=False, nocolorcuts=True,
                     noresample=True, seed=seed, south=issouth)
         else:
+            meta_tmp=meta[these]
+            qsometa_tmp=qsometa[these]
+            tmp_qso_flux_survey=tmp_qso_flux[these, :]
+            redshift=metadata['Z'][these]
+            rnd_state = np.random.get_state()
             if args.rmagdist is not None:
                 _tmp_qso_flux, _tmp_qso_wave, _meta, _qsometa \
                     = model.make_templates(nmodel=nt,
@@ -653,17 +682,25 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
                         lyaforest=False, nocolorcuts=True,
                         noresample=True, seed=seed, south=issouth)
             else:
-                _tmp_qso_flux, _tmp_qso_wave, _meta, _qsometa \
-                    = model.make_templates(nmodel=nt,
-                        redshift=metadata['Z'][these],magrange=(16.5,23.5),
-                        lyaforest=False, nocolorcuts=True,
-                        noresample=True, seed=seed, south=issouth)
+                for i in range(len(args.magranges)//2):
+                    log.info(f"Generating spectra for SURVEY {i+1} with magnitude ranges={float(args.magranges[2*i]),float(args.magranges[2*i+1])}")
+                    w=survey[these]==f'SURVEY {i+1}'
+                    ntodo=len(redshift[w])
+                    _tmp_qso_flux, _tmp_qso_wave, _meta, _qsometa \
+                        = model.make_templates(nmodel=ntodo,
+                            redshift=redshift[w],magrange=(float(args.magranges[2*i]),float(args.magranges[2*i+1])),
+                            lyaforest=False, nocolorcuts=True,
+                            noresample=True, seed=seed, south=issouth)
 
-        _meta['TARGETID'] = metadata['MOCKID'][these]
-        _qsometa['TARGETID'] = metadata['MOCKID'][these]
-        meta[these] = _meta
-        qsometa[these] = _qsometa
-        tmp_qso_flux[these, :] = _tmp_qso_flux
+                    _meta['TARGETID'] = metadata['MOCKID'][these][w]
+                    _qsometa['TARGETID'] = metadata['MOCKID'][these][w]
+                    meta_tmp[w] = _meta
+                    qsometa_tmp[w] = _qsometa
+                    tmp_qso_flux_survey[w]= _tmp_qso_flux
+        np.random.set_state(rnd_state)
+        meta=meta_tmp
+        qsometa=qsometa_tmp
+        tmp_qso_flux=tmp_qso_flux_survey
 
         if args.no_simqso:
             tmp_qso_wave[these, :] = _tmp_qso_wave
@@ -877,6 +914,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
     meta.add_column(Column(DZ_FOG,name='DZ_FOG'))
     meta.add_column(Column(DZ_sys_shift,name='DZ_SYS'))
     meta.add_column(Column(exptime,name='EXPTIME'))
+    meta.add_column(Column(survey,name='DESI_SURVEY'))
     if args.gamma_kms_zfit:
         meta.add_column(Column(DZ_stat_shift,name='DZ_STAT'))
     if 'Z_noRSD' in metadata.dtype.names:
@@ -943,6 +981,7 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         zbest['SUBTYPE'][:] = ''
         zbest['TARGETID'][:] = metadata['MOCKID']
         zbest['DELTACHI2'][:] = 25.
+        zbest.add_column(Column(survey,name='DESI_SURVEY'))
         hzbest = pyfits.convenience.table_to_hdu(zbest); hzbest.name='ZBEST'
         hfmap  = pyfits.convenience.table_to_hdu(fibermap);  hfmap.name='FIBERMAP'
         hdulist =pyfits.HDUList([pyfits.PrimaryHDU(),hzbest,hfmap])
