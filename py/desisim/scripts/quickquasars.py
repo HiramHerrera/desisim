@@ -659,6 +659,16 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
 
         tmp_qso_flux = apply_metals_transmission(tmp_qso_wave,tmp_qso_flux,
                             trans_wave,transmission,args.metals)
+    # Attenuate the spectra for extinction
+    if not sfdmap is None:
+        Rv=3.1   #set by default
+        indx=np.arange(metadata['RA'].size)
+        extinction =Rv*ext_odonnell(tmp_qso_wave)
+        EBV = sfdmap.ebv(metadata['RA'],metadata['DEC'], scaling=1.0)
+        tmp_qso_flux *=10**( -0.4 * EBV[indx, np.newaxis] * extinction)
+        #exptime_fact=np.power(10.0, (2.0 * Ag / 2.5))
+        #obsconditions['EXPTIME']*=exptime_fact
+        log.info("Dust extinction added")
 
     # if requested, compute magnitudes and apply target selection.  Need to do
     # this calculation separately for QSOs in the north vs south.
@@ -705,6 +715,16 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         bbflux['SOUTH']=bbflux['SOUTH'][selection]  
             
         nqso         = selection.size
+    if not sfdmap is None:   
+        scalefac=metadata['FLUX_R']/bbflux['FLUX_R']
+        tmp_qso_flux=scalefac[:,None]*tmp_qso_flux
+        for these, filters in zip( (~bbflux['SOUTH'], bbflux['SOUTH']),
+                                   (bassmzls_and_wise_filters, decam_and_wise_filters) ):
+            if np.count_nonzero(these) > 0:
+                maggies = filters.get_ab_maggies(1e-17 * tmp_qso_flux[these, :], tmp_qso_wave)
+                for band, filt in zip( bands, maggies.colnames ):
+                    bbflux[band][these] = np.ma.getdata(1e9 * maggies[filt])
+        log.info("Rescaling flux to match magnitudes")
 
     log.info("Resample to a linear wavelength grid (needed by DESI sim.)")
     # careful integration of bins, not just a simple interpolation
@@ -739,23 +759,9 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         fibermap_columns['PHOTSYS'] = photsys
     else :
         fibermap_columns=None
-
-    # Attenuate the spectra for extinction
-    if not sfdmap is None:
-       Rv=3.1   #set by default
-       indx=np.arange(metadata['RA'].size)
-       extinction =Rv*ext_odonnell(qso_wave)
-       EBV = sfdmap.ebv(metadata['RA'],metadata['DEC'], scaling=1.0)
-       qso_flux *=10**( -0.4 * EBV[indx, np.newaxis] * extinction)
-       if fibermap_columns is not None:
-          fibermap_columns['EBV']=EBV
-       EBV0=0.0
-       EBV_med=np.median(EBV)
-       Ag = 3.303 * (EBV_med - EBV0)
-       exptime_fact=np.power(10.0, (2.0 * Ag / 2.5))
-       obsconditions['EXPTIME']*=exptime_fact
-       log.info("Dust extinction added")
-       log.info('exposure time adjusted to {}'.format(obsconditions['EXPTIME']))
+        
+    if fibermap_columns is not None and sfdmap is not None:
+            fibermap_columns['EBV']=EBV
 
     if args.eboss:
         specsim_config_file = 'eboss'
@@ -919,7 +925,7 @@ def main(args=None):
         #lya_simqso_model.py is located in $DESISIM/py/desisim/scripts/.
         #Uses a different emmision lines model than the default SIMQSO. 
         #We will update this soon to match with the one used in select_mock_targets. 
-        model=SIMQSO(nproc=1,sqmodel='lya_simqso_model')
+        model=SIMQSO(nproc=1)
     decam_and_wise_filters = None
     bassmzls_and_wise_filters = None
 
