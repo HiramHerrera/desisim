@@ -167,6 +167,7 @@ Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?'
     
     parser.add_argument('--metal-strengths', type=float, default=None, required=False, help = "list of strengths to appply\
         to metals. Should correspond to the --metals flag", nargs='*')
+    parser.add_argument('--lbg-spectra', action='store_true', help="Make LBG spectra instead of QSOs")
 
 
 
@@ -293,7 +294,7 @@ def get_pixel_seed(pixel, nside, global_seed):
 def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filters,
                          bassmzls_and_wise_filters,footprint_healpix_weight,
                          footprint_healpix_nside,
-                         bal=None,sfdmap=None,eboss=None) :
+                         bal=None,sfdmap=None,eboss=None,catalog=None) :
     log = get_logger()
 
     # open filename and extract basic HEALPix information
@@ -361,9 +362,6 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
         # TODO: This prevention should not be needed.
         eboss=None
         args.desi_footprint=False
-
-        log.info(f"Getting objects from catalog {args.from_catalog}")
-        catalog = Table.read(args.from_catalog)
         # Get mockobjs in pixel that are in the catalog.
         selection = np.isin(metadata['MOCKID'],catalog['MOCKID'])
         if selection.sum()==0:
@@ -654,11 +652,15 @@ def simulate_one_healpix(ifilename,args,model,obsconditions,decam_and_wise_filte
                     lyaforest=False, nocolorcuts=True,
                     noresample=True, seed=seed, south=issouth)
         elif mags is not None:
-            _tmp_qso_flux, _tmp_qso_wave, _meta, _qsometa \
-                = model.make_templates(nmodel=nt,
-                    redshift=metadata['Z'][these],mag=mags[these],
-                    lyaforest=False, nocolorcuts=True,
-                    noresample=True, seed=seed, south=issouth)
+            if not args.lbg_spectra:
+                _tmp_qso_flux, _tmp_qso_wave, _meta, _qsometa \
+                    = model.make_templates(nmodel=nt,
+                        redshift=metadata['Z'][these],mag=mags[these],
+                        lyaforest=False, nocolorcuts=True,
+                        noresample=True, seed=seed, south=issouth)
+            else:
+                 _tmp_qso_flux, _tmp_qso_wave, _meta, _qsometa \
+                    =model.make_templates(nmodel=nt,redshift=metadata['Z'][these],mag=mags[these],noresample=True)
         else:
             _tmp_qso_flux, _tmp_qso_wave, _meta, _qsometa \
                  = model.make_templates(nmodel=nt,
@@ -1010,6 +1012,10 @@ def main(args=None):
     if args.no_simqso:
         log.info("Load QSO model")
         model=QSO()
+    elif args.lbg_spectra:
+        from desisim.lbg_templates import LBG
+        log.info("Load LBG model")
+        model = LBG(template_id=2)
     else:
         log.info("Load SIMQSO model")
         #lya_simqso_model.py is located in $DESISIM/py/desisim/scripts/.
@@ -1060,6 +1066,10 @@ def main(args=None):
     else:
         eboss = None
         
+    if args.from_catalog is not None:
+        log.info(f"Getting objects from catalog {args.from_catalog}")
+        catalog = Table.read(args.from_catalog)
+        
     if args.nproc > 1:
         func_args = [ {"ifilename":filename , \
                        "args":args, "model":model , \
@@ -1068,7 +1078,8 @@ def main(args=None):
                        "bassmzls_and_wise_filters": bassmzls_and_wise_filters , \
                        "footprint_healpix_weight": footprint_healpix_weight , \
                        "footprint_healpix_nside": footprint_healpix_nside , \
-                       "bal":bal,"sfdmap":sfdmap,"eboss":eboss \
+                       "bal":bal,"sfdmap":sfdmap,"eboss":eboss, \
+                       "catalog":catalog \
                    } for i,filename in enumerate(args.infile) ]
         with multiprocessing.Pool(args.nproc) as pool:
             pool.map(_func, func_args)
@@ -1077,4 +1088,4 @@ def main(args=None):
             simulate_one_healpix(ifilename,args,model,obsconditions,
                     decam_and_wise_filters,bassmzls_and_wise_filters,
                     footprint_healpix_weight,footprint_healpix_nside,
-                    bal=bal,sfdmap=sfdmap,eboss=eboss)
+                    bal=bal,sfdmap=sfdmap,eboss=eboss,catalog=catalog)
