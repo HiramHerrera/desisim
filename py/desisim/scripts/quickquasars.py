@@ -108,10 +108,11 @@ Use 'all' or no argument for mock version < 7.3 or final metal runs. ",nargs='?'
         "by a Gaussian kernel using FFT. Pipeline does this by 10 A. " \
         "Larger smoothing might be needed for better decoupling. Does not apply to eBOSS mocks.")
     
-    parser.add_argument('--year1-throughput', action='store_true', help="Use DESI-Y1 throughput including a dip at 440 nm.")
-    
     parser.add_argument('--from-catalog', type=str, default=None, help="Input catalog of mock objects to simulate")
     
+    parser.add_argument('--metal-strengths-label', type=str, default=None, choices=["lyacolore", "saclay", "lyacolore-2lpt"],
+                        help="Use specific metal tuning (ignored if --metal-strengths is provided)")
+
     parser.add_argument('--metal-strengths', type=float, default=None, required=False, help = "list of strengths to appply\
         to metals. Should correspond to the --metals flag", nargs='*')
 
@@ -475,7 +476,10 @@ def simulate_one_healpix(ifilename,args,model,decam_and_wise_filters,
             tmp_qso_flux = apply_metals_transmission(
                 tmp_qso_wave, tmp_qso_flux,
                 trans_wave, transmission,
-                args.metals, mocktype=args.raw_mock, strengths=args.metal_strengths)
+                args.metals,
+                strengths_label=args.metal_strengths_label,
+                strengths=args.metal_strengths
+            )
             
     # if requested, add DLA to the transmission skewers
     if args.dla is not None :
@@ -620,17 +624,12 @@ def simulate_one_healpix(ifilename,args,model,decam_and_wise_filters,
     else :
         fibermap_columns=None
 
-    if args.year1_throughput:
-        specsim_config_file = 'desiY1'
-    else:
-        specsim_config_file = 'desi'
-
     ### use Poisson = False to get reproducible results.
     ### use args.save_resolution = False to not save the matrix resolution per quasar in spectra files.
-    resolution=sim_spectra(qso_wave,qso_flux, pogram="DARK", obsconditions=obsconditions,spectra_filename=ofilename,
+    resolution=sim_spectra(qso_wave,qso_flux, program="DARK", obsconditions=obsconditions,spectra_filename=ofilename,
                            sourcetype="qso",ra=metadata["RA"],dec=metadata["DEC"],targetid=targetid,
                            meta=specmeta,seed=seed,fibermap_columns=fibermap_columns,use_poisson=False,
-                           specsim_config_file=specsim_config_file, dwave_out=0.8, 
+                           specsim_config_file='desi', dwave_out=0.8,
                            save_resolution=args.save_resolution, source_contribution_smoothing=args.source_contr_smoothing)
 
     ### Keep input redshift
@@ -643,7 +642,6 @@ def simulate_one_healpix(ifilename,args,model,decam_and_wise_filters,
     meta.add_column(Column(Z_spec,name='TRUEZ'))
     meta.add_column(Column(Z_input,name='Z_INPUT'))
     meta.add_column(Column(DZ_FOG,name='DZ_FOG'))
-    meta.add_column(Column(DZ_sys_shift,name='DZ_SYS'))
     if 'Z_noRSD' in metadata.dtype.names:
         meta.add_column(Column(metadata['Z_noRSD'],name='Z_NORSD'))
     else:
