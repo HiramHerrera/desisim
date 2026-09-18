@@ -2,10 +2,22 @@
 desisim change log
 ==================
 
-0.39.1 (unreleased)
+0.39.2 (unreleased)
 -------------------
 
-* No changes yet
+* No chnages yet.
+
+0.39.1 (2026-09-17)
+-------------------
+
+* multiprocessing.Pool with fork instead of forkserver for python 3.14 (PR `#601`_).
+* Update github CI to not need surveyops download (PR `#602`_).
+* For the record: docs reproducible dev env in PR `#599`_ reverted by PR `#600`_.
+
+.. _`#599`: https://github.com/desihub/desisim/pull/599
+.. _`#600`: https://github.com/desihub/desisim/pull/600
+.. _`#601`: https://github.com/desihub/desisim/pull/601
+.. _`#602`: https://github.com/desihub/desisim/pull/602
 
 0.39.0 (2026-03-18)
 -------------------
